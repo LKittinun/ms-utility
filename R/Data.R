@@ -6,6 +6,7 @@ library(viridis, quietly = T)
 library(gghighlight, quietly = T)
 library(ggridges, quietly = T)
 library(cowplot, quietly = T)
+library(pheatmap, quietly = T)
 })
 
 
@@ -114,7 +115,9 @@ if(tot_col >1){
     ## Plot
     message("Generating missing value plot...")
     miss_val_plot <- naniar::vis_miss(pg_lfq[,-c(1:4), drop = F], sort_miss = T, cluster = T)
-    ggsave(miss_val_plot, filename = "result/plot/miss_val.tiff", height = max(7,p_dim-5), width = max(7,p_dim-5), create.dir = T)
+    
+    ggsave(miss_val_plot, filename = "result/plot/hm/miss_val.tiff", height = max(7,p_dim-5), width = max(7,p_dim-5), create.dir = T)
+    
     miss_val_case_summary <- naniar::miss_var_summary(pg_lfq_nontrunc[,-c(1:4), drop = F], order = F) |> 
       mutate(tot_n = ifelse(n_miss == 0, nrow(pg_lfq), n_miss*(100/pct_miss))) |> 
       select(variable, tot_n, n_miss, pct_miss)
@@ -126,12 +129,35 @@ if(tot_col >1){
       arrange(pct_miss) |> 
       select(variable, Protein.Names, First.Protein.Description, tot_n, n_miss, pct_miss)
 
+
   write_delim(miss_val_case_summary, file= "result/sample_summary.tsv", delim = "\t")
   write_delim(miss_val_prot_summary, file= "result/prot_summary.tsv", delim = "\t")
   
   message("Done!")
 
     if(tot_col > 1){
+      
+      message("Generating protein intensity heatmap ...")
+      #BUG
+      miss_0 <-  miss_val_prot_summary[miss_val_prot_summary$pct_miss==0,]$variable
+      miss_25 <- miss_val_prot_summary[miss_val_prot_summary$pct_miss<=25,]$variable
+      miss_50 <- miss_val_prot_summary[miss_val_prot_summary$pct_miss<=50,]$variable
+
+      batch_df <- data.frame(row.names = colnames(pg_log2[,-1]), "Run" = 1:ncol(pg_log2[,-1]))
+      walk2(list(miss_0, miss_25, miss_50 ), c(100,75,50), 
+      \(x,y) {
+        p <- pg_log2 |> 
+        as.data.frame() |> 
+        column_to_rownames("Protein.Group") |> 
+        as.data.frame() |> 
+        mutate(across(where(is.numeric), ~replace_na(.x,0))) %>%
+        filter(row.names(.) %in% x )|> 
+          pheatmap(main = paste0("Protein with at least ", y , "% completeness"),
+                  scale = "row", show_rownames = F, annotation_col = batch_df, fontsize = 14,
+                  annotation_names_col = F)
+        ggsave(paste0("result/plot/hm/prot_hm_", y, "_", exp_name, ".tiff"), p , height = max(7,p_dim-7), width = max(7,p_dim-7), create.dir = T)
+      })
+      message("Done!")
       
       message("Generating pairwise protein correlation plot ...")
       proteins_pair <- pg_log2 |> 
@@ -212,9 +238,24 @@ if(tot_col >1){
     } else {
   message("Total sample = 1, statistical plots were not generated.")
 }
-
   
-message("Generating intensity boxplot...")
+message("Generating intensity plot...")
+
+mean_intensity_df <- pg_log2 |> 
+  as.data.frame() |> 
+  column_to_rownames("Protein.Group") |> colMeans(na.rm = T) 
+
+global_mean <- mean(mean_intensity_df)
+global_sd <- sd(mean_intensity_df)
+mean_intens_p <- ggplot(NULL, aes(x = 1:ncol(pg_log2[,-1]), y = mean_intensity_df)) +
+  geom_point() +
+  geom_hline(yintercept = c(global_mean, global_mean-global_sd,global_mean+global_sd,
+                            global_mean -2*global_sd, global_mean+2*global_sd), linetype = "dashed",
+                          col = c("black", "blue", "blue", "darkred", "darkred"), alpha = 0.5) +
+  labs(Title = "Intensity plot", x = "Run", y = "Mean log2 sample intensity") +
+  theme_classic()
+ggsave(paste0("result/plot/mean_intensity_plot_",exp_name,".tiff"), width = max(7,p_dim-7), height = 5,create.dir = T)
+
 pg_normalized_intensity <- pg_log2 |> 
   select(-Protein.Group) |> 
   pivot_longer(everything(), names_to = "Sample", values_to = "Intensity") |> 
@@ -239,7 +280,7 @@ pep_normalized_intensity <- pep_log2 |>
 
 normalized_intensity_p <- plot_grid(pep_normalized_intensity, pg_normalized_intensity, nrow = 2)
 
-ggsave("result/plot/normalized_intensity.tiff", normalized_intensity_p, width = p_dim-5, height = 10, create.dir = T)
+ggsave(paste0("result/plot/normalized_intensity_",exp_name,".tiff"), normalized_intensity_p, width = p_dim-5, height = 10, create.dir = T)
 message("Done!")
 
 message("Generating precursor intensity vs retention time plot ...")
