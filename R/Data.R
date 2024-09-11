@@ -6,15 +6,14 @@ library(viridis, quietly = T)
 library(gghighlight, quietly = T)
 library(ggridges, quietly = T)
 library(cowplot, quietly = T)
-library(pheatmap, quietly = T)
+library(ComplexHeatmap, quietly = T)
 })
-
 
 suppressMessages( options(warn=-1) )
 args <- commandArgs(trailingOnly = T)
 
 folder_path <- args
-  #"C:/DIA-NN/1.9/Result/PXD"
+  #"C:/DIA-NN/1.9/Result/4_Rattus_ziptip_3k_06_07_2024/VF"
 
 exp_name <- tail(unlist(strsplit(folder_path, split = "/")), 1)
 
@@ -22,21 +21,25 @@ setwd(folder_path)
 
 if (!dir.exists("./result")) {dir.create("./result")}
 
-df <- diann_load("report.tsv")
+df <- diann_load("report.tsv") |> 
+  mutate(File.Name = gsub(".*\\\\(.*)\\.raw", "\\1", File.Name)) |> 
+  arrange(match(File.Name, stringr::str_sort(File.Name, numeric = T)))
 
 df_name <- df |> 
   select(Protein.Group, Genes, Protein.Names, First.Protein.Description) |> 
   distinct()
 
 message("Generating protein group matrix...")
-pg_lfq_nontrunc <- diann_maxlfq(df[df$Q.Value <= 0.01 & df$PG.Q.Value <= 0.01,], group.header="Protein.Group", 
-id.header = "Precursor.Id", quantity.header = "Precursor.Normalised") |> 
+
+pg_lfq_nontrunc <- df |> filter(Q.Value <= 0.01 & PG.Q.Value <= 0.01) |> 
+  diann_maxlfq(group.header="Protein.Group", id.header = "Precursor.Id", 
+               quantity.header = "Precursor.Normalised") |> 
   as.data.frame() |> 
   rownames_to_column("Protein.Group") |> 
   left_join(df_name, by = "Protein.Group") |> 
-  relocate(Genes, Protein.Names, First.Protein.Description, .after = Protein.Group) 
+  relocate(Genes, Protein.Names, First.Protein.Description, .after = Protein.Group) |> 
+  arrange(Protein.Group)
 
-colnames(pg_lfq_nontrunc) <- gsub(".*\\\\(.*)\\.raw", "\\1", colnames(pg_lfq_nontrunc))
 message("Done!")
 
 pg_lfq <- pg_lfq_nontrunc
@@ -51,14 +54,14 @@ df_name_pep <-  df |>
   distinct()
 
 message("Generating peptide matrix...")
-pep_normalized_nontrunc <- diann_maxlfq(df[df$Q.Value <= 0.01 & df$PG.Q.Value <= 0.01,], group.header="Stripped.Sequence", 
-id.header = "Precursor.Id", quantity.header = "Precursor.Normalised") |> 
+
+pep_normalized_nontrunc <- diann_matrix(df, id.header="Stripped.Sequence", quantity.header = "Precursor.Normalised",
+                                        q=0.01, proteotypic.only = T, pg.q = 0.01) |> 
   as.data.frame() |> 
   rownames_to_column("Peptides") |> 
   left_join(df_name_pep, by = c("Peptides" = "Stripped.Sequence")) |> 
-  relocate(Protein.Group, Genes, Protein.Names, First.Protein.Description, .after = Peptides)
-
-colnames(pep_normalized_nontrunc) <- gsub(".*\\\\(.*)\\.raw", "\\1", colnames(pep_normalized_nontrunc))
+  relocate(Protein.Group, Genes, Protein.Names, First.Protein.Description, .after = Peptides) |> 
+  arrange(Protein.Group)
 
 message("Done!")
 
@@ -69,7 +72,7 @@ pep_log2 <- pep_normalized |>
   select(-Protein.Names, -Protein.Group, -Genes, -First.Protein.Description) |> 
   mutate(across(where(is.numeric), log2)) 
 
-  ## Total proteins identified
+## Total proteins identified
 message(" ")
 sink(paste0("result/summary_", exp_name,".txt"))
   
@@ -78,7 +81,7 @@ cat(paste0("Total peptides identified: ", nrow(pep_normalized)), "\n")
 cat(paste0("Total proteins identified: ", nrow(pg_lfq)), "\n")
 
 diann_save(pg_lfq_nontrunc, file = paste0("result/pg_lfq_",exp_name,".tsv"))
-diann_save(pep_normalized_nontrunc, file = paste0("result/pep_lfq_",exp_name,".tsv"))
+diann_save(pep_normalized_nontrunc, file = paste0("result/pep_normalized_",exp_name,".tsv"))
 
 tot_col <- ncol(pg_lfq[,-c(1:4), drop = F]) 
 
@@ -114,7 +117,7 @@ if(tot_col >1){
     
     ## Plot
     message("Generating missing value plot...")
-    miss_val_plot <- naniar::vis_miss(pg_lfq[,-c(1:4), drop = F], sort_miss = T, cluster = T)
+    miss_val_plot <- naniar::vis_miss(pg_lfq[,-c(1:4), drop = F], sort_miss = T, cluster = T, warn_large_data = F)
     
     ggsave(miss_val_plot, filename = "result/plot/hm/miss_val.tiff", height = max(7,p_dim-5), width = max(7,p_dim-5), create.dir = T)
     
@@ -142,21 +145,26 @@ if(tot_col >1){
       miss_0 <-  miss_val_prot_summary[miss_val_prot_summary$pct_miss==0,]$variable
       miss_25 <- miss_val_prot_summary[miss_val_prot_summary$pct_miss<=25,]$variable
       miss_50 <- miss_val_prot_summary[miss_val_prot_summary$pct_miss<=50,]$variable
+      miss_100 <- miss_val_prot_summary$variable
+      #batch_df <- data.frame(row.names = colnames(pg_log2[,-1]), "Run" = 1:ncol(pg_log2[,-1]))
+      ht_opt$message <- F
 
-      batch_df <- data.frame(row.names = colnames(pg_log2[,-1]), "Run" = 1:ncol(pg_log2[,-1]))
-      walk2(list(miss_0, miss_25, miss_50 ), c(100,75,50), 
+      batch_df <- HeatmapAnnotation(Run = anno_simple(1:ncol(pg_log2[,-1]),  pch = as.character(1:ncol(pg_log2[,-1]) ) ))
+      walk2(list(miss_0, miss_25, miss_50, miss_100 ), c(100,75,50,0), 
       \(x,y) {
+        tiff(paste0("result/plot/hm/prot_hm_", y, "_", exp_name, ".tiff"), height = max(7,p_dim-20), width = max(7,p_dim-20), units="in",res=300)
         p <- pg_log2 |> 
         as.data.frame() |> 
+        dplyr::filter(Protein.Group %in% x )|> 
         column_to_rownames("Protein.Group") |> 
-        as.data.frame() |> 
+        t() |> scale() |> t() |> as.data.frame() %>%
         mutate(across(where(is.numeric), ~replace_na(.x,0))) %>%
-        filter(row.names(.) %in% x )|> 
-          pheatmap(main = paste0("Protein with at least ", y , "% completeness"),
-                  scale = "row", show_rownames = F, annotation_col = batch_df, fontsize = 14,
-                  annotation_names_col = F)
-        ggsave(paste0("result/plot/hm/prot_hm_", y, "_", exp_name, ".tiff"), p , height = max(7,p_dim-7), width = max(7,p_dim-7), create.dir = T)
+          ComplexHeatmap::Heatmap(column_title = paste0("Protein with at least ", y , "% completeness ", "(", nrow(.) ,")"), name = "Z-score\nintensity",
+                  show_row_names = F, top_annotation = batch_df, column_names_rot = 45)
+       draw(p)
+       dev.off()
       })
+  
       message("Done!")
       
       message("Generating pairwise protein correlation plot ...")
