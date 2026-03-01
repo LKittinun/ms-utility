@@ -6,8 +6,35 @@ Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host "   [6]  Service report                (Excel)" -ForegroundColor Cyan
 Write-Host "        Analysis_Report.xlsx  (5 sheets)" -ForegroundColor DarkCyan
-Write-Host "        QC metrics  |  run stats  |  protein group matrix" -ForegroundColor DarkCyan
+Write-Host "        Project Overview  |  Raw Files  |  Run Statistics" -ForegroundColor DarkCyan
+Write-Host "        Summary Statistics  |  Protein Groups (pg_matrix)" -ForegroundColor DarkCyan
 Write-Host "  $border" -ForegroundColor DarkCyan
+Write-Host ""
+
+# -- Confirm ------------------------------------------------------------------
+$cItems = @("Run", "Back to main menu")
+$cSel   = 0
+$cTop   = [Console]::CursorTop
+[Console]::SetCursorPosition(0, $cTop)
+Write-Host ("  > " + $cItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
+[Console]::SetCursorPosition(0, $cTop + 1)
+Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
+[Console]::SetCursorPosition(0, $cTop + 2)
+:confirmLoop while ($true) {
+    $ck = [Console]::ReadKey($true)
+    if ($ck.Key -eq [ConsoleKey]::UpArrow -or $ck.Key -eq [ConsoleKey]::DownArrow) {
+        $p = $cSel; $cSel = 1 - $cSel
+        [Console]::SetCursorPosition(0, $cTop + $p)
+        Write-Host ("    " + $cItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkCyan" }) -NoNewline
+        [Console]::SetCursorPosition(0, $cTop + $cSel)
+        Write-Host ("  > " + $cItems[$cSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
+    } elseif ($ck.Key -eq [ConsoleKey]::Enter) {
+        if ($cSel -eq 1) { Clear-Host; .\Main.ps1; return }
+        break confirmLoop
+    } elseif ($ck.Key -eq [ConsoleKey]::Escape) {
+        Clear-Host; .\Main.ps1; return
+    }
+}
 Write-Host ""
 
 $first_path = Get-Location
