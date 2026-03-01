@@ -21,26 +21,81 @@ setwd(folder_path)
 
 if (!dir.exists("./result")) {dir.create("./result")}
 
-df <- diann_load("report.tsv") |> 
-  mutate(File.Name = gsub(".*\\\\(.*)\\.raw", "\\1", File.Name)) |> 
+# -- Load DIA-NN precursor report ----------------------------------------------
+# DIA-NN 1.x outputs report.tsv; DIA-NN 2.x outputs report.parquet.
+# If the folder contains only report.parquet (and no report.tsv), the arrow
+# package is used to read it  - the column structure is identical.
+if (file.exists("report.tsv")) {
+  message("Loading DIA-NN report (TSV  - DIA-NN 1.x) ...")
+  df <- diann_load("report.tsv") |>
+    mutate(File.Name = gsub(".*[/\\\\](.*)\\.raw$", "\\1", File.Name))
+
+} else if (file.exists("report.parquet")) {
+  message("Loading DIA-NN report (Parquet  - DIA-NN 2.x) ...")
+  if (!requireNamespace("arrow", quietly = TRUE)) {
+    message("Installing 'arrow' package for parquet support ...")
+    install.packages("arrow", repos = "https://cloud.r-project.org", quiet = TRUE)
+  }
+  df <- arrow::read_parquet("report.parquet") |> as.data.frame() |>
+    mutate(File.Name = Run)
+
+} else {
+  stop(paste0(
+    "No DIA-NN report found in: ", folder_path, "\n",
+    "Expected report.tsv (DIA-NN 1.x) or report.parquet (DIA-NN 2.x).\n",
+    "For DIA-NN 2.x, point to the Result subfolder, e.g.:\n",
+    "  Z:/Proteomics/MyProject/Result"
+  ))
+}
+
+# DIA-NN 2.x removes First.Protein.Description from the main report;
+# load from report.protein_description.tsv (Description column) when absent.
+if (!("First.Protein.Description" %in% names(df))) {
+  if (file.exists("report.protein_description.tsv")) {
+    prot_desc <- read_tsv("report.protein_description.tsv", show_col_types = FALSE) |>
+      select(Protein.Group = Protein.Id, First.Protein.Description = Description)
+    df <- df |> left_join(prot_desc, by = "Protein.Group")
+  } else {
+    df$First.Protein.Description <- df$Protein.Names
+  }
+}
+
+df <- df |>
   arrange(match(File.Name, stringr::str_sort(File.Name, numeric = T)))
 
 df_name <- df |> 
   select(Protein.Group, Genes, Protein.Names, First.Protein.Description) |> 
   distinct()
 
-message("Generating protein group matrix...")
+# -- Protein group matrix ------------------------------------------------------
+# DIA-NN 2.x writes report.pg_matrix.tsv; load it directly (faster and avoids
+# recomputing LFQ from the precursor report via diann_maxlfq).
+# Fall back to diann_maxlfq() for DIA-NN 1.x runs that have no pg_matrix file.
+pg_matrix_file <- list.files(".", pattern = "^report.*\\.pg_matrix\\.tsv$")[1]
 
-pg_lfq_nontrunc <- df |> filter(Q.Value <= 0.01 & PG.Q.Value <= 0.01) |> 
-  diann_maxlfq(group.header="Protein.Group", id.header = "Precursor.Id", 
-               quantity.header = "Precursor.Normalised") |> 
-  as.data.frame() |> 
-  rownames_to_column("Protein.Group") |> 
-  left_join(df_name, by = "Protein.Group") |> 
-  relocate(Genes, Protein.Names, First.Protein.Description, .after = Protein.Group) |> 
-  arrange(Protein.Group)
-
-message("Done!")
+if (!is.na(pg_matrix_file)) {
+  message("Loading protein group matrix from ", pg_matrix_file, " ...")
+  pg_raw <- read_tsv(pg_matrix_file, show_col_types = FALSE)
+  meta_cols <- c("Protein.Group", "Protein.Ids", "First.Protein.Description", "Genes", "Protein.Names")
+  sample_cols <- setdiff(names(pg_raw), meta_cols)
+  pg_lfq_nontrunc <- pg_raw |>
+    select(Protein.Group,
+           any_of(c("Genes", "Protein.Names", "First.Protein.Description")),
+           all_of(sample_cols)) |>
+    arrange(Protein.Group)
+  message("Done!")
+} else {
+  message("Generating protein group matrix via diann_maxlfq() ...")
+  pg_lfq_nontrunc <- df |> filter(Q.Value <= 0.01 & PG.Q.Value <= 0.01) |>
+    diann_maxlfq(group.header="Protein.Group", id.header = "Precursor.Id",
+                 quantity.header = "Precursor.Normalised") |>
+    as.data.frame() |>
+    rownames_to_column("Protein.Group") |>
+    left_join(df_name, by = "Protein.Group") |>
+    relocate(Genes, Protein.Names, First.Protein.Description, .after = Protein.Group) |>
+    arrange(Protein.Group)
+  message("Done!")
+}
 
 pg_lfq <- pg_lfq_nontrunc
 colnames(pg_lfq)[-c(1:4)] <- str_trunc(colnames(pg_lfq)[-c(1:4)], width = 20, "left")
@@ -168,12 +223,17 @@ if(tot_col >1){
       message("Done!")
       
       message("Generating pairwise protein correlation plot ...")
-      proteins_pair <- pg_log2 |> 
-        column_to_rownames("Protein.Group") |> 
-        ggpairs() +
-        theme_classic()
-
-      ggsave(proteins_pair, filename = paste0("result/plot/proteins_pair_", exp_name, ".tiff"), width = p_dim, height = p_dim, limitsize = F, create.dir = T)
+      pg_pair_data <- pg_log2 |> column_to_rownames("Protein.Group")
+      # Top 100 proteins by mean log2 intensity. Use base-R pairs() instead of
+      # ggpairs() — ggpairs builds N^2 ggplot objects which is very slow even
+      # with few data points; pairs() renders everything in one device call.
+      top100 <- order(rowMeans(pg_pair_data, na.rm = TRUE), decreasing = TRUE)[1:min(100, nrow(pg_pair_data))]
+      pg_pair_data <- pg_pair_data[top100, ]
+      if (!dir.exists("result/plot")) dir.create("result/plot", recursive = TRUE)
+      tiff(paste0("result/plot/proteins_pair_", exp_name, ".tiff"),
+           width = p_dim, height = p_dim, units = "in", res = 150, compression = "lzw")
+      pairs(pg_pair_data, pch = 16, cex = 0.6, col = rgb(0, 0, 0, 0.4), gap = 0.2)
+      dev.off()
       message("Done!")
       
       message("Generating proteins correlation heatmap ...")
@@ -317,4 +377,3 @@ precursor_RT <- ggplot(precursor_int_df, aes(x = Precursor.Normalised, y = RT.Wi
 
 ggsave(precursor_RT, filename = paste0("result/plot/precursor_RT_", exp_name, ".tiff"), width = 8, height = 5, create.dir = T)
 message("Done!")
-
