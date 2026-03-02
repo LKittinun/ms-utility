@@ -38,6 +38,7 @@ Write-Host ""
 # ── Root ──────────────────────────────────────────────────────────────────────
 $root = Read-Host "  Root directory (leave blank for Z:\Proteomics)"
 if ($root -eq "") { $root = "Z:\Proteomics" }
+$projectsRoot = Join-Path $root "Projects"
 
 # ── Column library ────────────────────────────────────────────────────────────
 $colLibFile = ".\data\columns.json"
@@ -176,18 +177,57 @@ function DrawDescItem($idx, $hl) {
     break
 }
 
-$analyticsPath = Join-Path $root $analyticsCol
-$logFile       = Join-Path $analyticsPath "column_log.csv"
+# ── Resolve analytics column folder (date-prefixed, e.g. 2026-03-02_C20533039) ─
+$colDatePrefix = Get-Date -Format "yyyy-MM-dd"
+$analyticsPath = $null
+if (Test-Path $projectsRoot) {
+    $existingColDir = Get-ChildItem $projectsRoot -Directory |
+        Where-Object { $_.Name -like "*_$analyticsCol" } |
+        Select-Object -First 1
+    if ($existingColDir) { $analyticsPath = $existingColDir.FullName }
+}
+if (-not $analyticsPath) { $analyticsPath = Join-Path $projectsRoot "${colDatePrefix}_${analyticsCol}" }
+$logFile = Join-Path $analyticsPath "column_log.csv"
+
+# ── Column info JSON ───────────────────────────────────────────────────────────
+$colInfoFile    = Join-Path $analyticsPath "column_info.json"
+$colInfoData    = $null
+$colInfoChanged = $false
+if (Test-Path $colInfoFile) {
+    $colInfoData = Get-Content $colInfoFile -Raw | ConvertFrom-Json
+}
+
+if ($null -eq $colInfoData) {
+    # New column - collect all fields
+    Write-Host ""
+    Write-Host "  $rule" -ForegroundColor DarkCyan
+    Write-Host "  New column detected - enter column details (all optional):" -ForegroundColor Cyan
+    Write-Host "  $rule" -ForegroundColor DarkCyan
+    Write-Host ""
+    $colMfr       = Read-Host "  Manufacturer"
+    $colSerial    = Read-Host "  Serial number"
+    $colFirstUse = Read-Host "  First use date (yyyy-MM-dd)"
+    $colInfoChanged = $true
+} else {
+    # Existing column - carry over fields
+    $colMfr       = if ($colInfoData.Manufacturer) { $colInfoData.Manufacturer } else { "" }
+    $colSerial    = if ($colInfoData.SerialNumber)  { $colInfoData.SerialNumber }  else { "" }
+    $colFirstUse = if ($colInfoData.FirstUseDate)  { $colInfoData.FirstUseDate }  else { "" }
+    Write-Host ""
+    Write-Host "  Column: $analyticsCol" -ForegroundColor Cyan
+}
 
 # Show existing projects
 if (Test-Path $analyticsPath) {
-    $existing = Get-ChildItem $analyticsPath -Directory |
-        Where-Object { Test-Path (Join-Path $_.FullName "project_info.json") } |
-        Select-Object -ExpandProperty Name
-    if ($existing) {
+    $existingDirs = @(Get-ChildItem $analyticsPath -Directory |
+        Where-Object { Test-Path (Join-Path $_.FullName "project_info.json") })
+    if ($existingDirs.Count -gt 0) {
         Write-Host ""
         Write-Host "  Existing projects under $analyticsCol :" -ForegroundColor DarkCyan
-        $existing | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
+        foreach ($ed in $existingDirs) {
+            Write-Host "    $($ed.Name)" -ForegroundColor Gray
+        }
+        Write-Host "  (Enter project name only - no date prefix, no spaces)" -ForegroundColor DarkGray
     }
 } else {
     Write-Host ""
@@ -221,14 +261,33 @@ if ($projectName -eq "") {
     return
 }
 
-$projectPath = Join-Path $analyticsPath $projectName
+# Sanitize: replace spaces with underscores, strip chars invalid in folder names
+$projectName = $projectName -replace '[\s]+', '_' -replace '[<>:"/\\|?*]', ''
+if ($projectName -eq "") {
+    Write-Host "  Project name is empty after sanitizing invalid characters." -ForegroundColor Red
+    return
+}
+
+$datePrefix  = Get-Date -Format "yyyy-MM-dd"
+$folderName  = "${datePrefix}_${projectName}"
+$projectPath = Join-Path $analyticsPath $folderName
 
 $existingInfo = $null
-if (Test-Path "$projectPath\project_info.json") {
-    $existingInfo = Get-Content "$projectPath\project_info.json" -Raw | ConvertFrom-Json
-    Write-Host "  Existing project found - leave fields blank to keep current values." -ForegroundColor Yellow
-} elseif (Test-Path $projectPath) {
-    Write-Host "  WARNING: project folder already exists." -ForegroundColor Yellow
+if (Test-Path $analyticsPath) {
+    $existingDir = Get-ChildItem $analyticsPath -Directory | Where-Object {
+        $jpath = Join-Path $_.FullName "project_info.json"
+        if (Test-Path $jpath) {
+            $j = Get-Content $jpath -Raw | ConvertFrom-Json
+            $j.Project -eq $projectName
+        }
+    } | Select-Object -First 1
+    if ($existingDir) {
+        $projectPath  = $existingDir.FullName
+        $existingInfo = Get-Content (Join-Path $projectPath "project_info.json") -Raw | ConvertFrom-Json
+        Write-Host "  Existing project found - leave fields blank to keep current values." -ForegroundColor Yellow
+    } elseif (Test-Path $projectPath) {
+        Write-Host "  WARNING: project folder already exists." -ForegroundColor Yellow
+    }
 }
 
 # ── PI ────────────────────────────────────────────────────────────────────────
@@ -342,7 +401,7 @@ while ($true) {
         $subfolders = $existingFolders
         break
     }
-    $parsed = @($subfoldersRaw -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
+    $parsed = @($subfoldersRaw -split "," | ForEach-Object { ($_.Trim() -replace '[\s]+', '_' -replace '[<>:"/\\|?*]', '') } | Where-Object { $_ -ne "" })
     # Duplicates within new input
     $seen  = @{}
     $dupes = @()
@@ -383,8 +442,8 @@ if ($existingInfo) {
 Write-Host ""
 Write-Host "  $rule" -ForegroundColor DarkCyan
 Write-Host "  Folders to create:" -ForegroundColor Cyan
-Write-Host "  $analyticsCol\" -ForegroundColor DarkGray
-Write-Host "  \-- $projectName\" -ForegroundColor White
+Write-Host "  Projects\$(Split-Path $analyticsPath -Leaf)\" -ForegroundColor DarkGray
+Write-Host "  \-- $(Split-Path $projectPath -Leaf)\" -ForegroundColor White
 if ($subfolders.Count -eq 0) {
     Write-Host "      \-- Result\" -ForegroundColor Gray
 } else {
@@ -405,6 +464,13 @@ Write-Host "    Desc      : $(if ($colDesc -eq '') { '(none)' } else { $colDesc 
 Write-Host "    Trap      : $(if ($trapCol -eq '') { '(not specified)' } else { $trapCol })" -ForegroundColor White
 Write-Host "    TrapDesc  : $(if ($trapColDesc -eq '') { '(none)' } else { $trapColDesc })" -ForegroundColor DarkGray
 Write-Host "    Project   : $projectName" -ForegroundColor White
+if ($colInfoChanged) {
+    Write-Host ""
+    Write-Host "  New column_info.json:" -ForegroundColor Cyan
+    Write-Host "    Manufacturer : $(if ($colMfr -eq '') { '(not specified)' } else { $colMfr })" -ForegroundColor White
+    Write-Host "    Serial no.   : $(if ($colSerial -eq '') { '(not specified)' } else { $colSerial })" -ForegroundColor White
+    Write-Host "    First use date: $(if ($colFirstUse -eq '') { '(not specified)' } else { $colFirstUse })" -ForegroundColor White
+}
 Write-Host ""
 
 Write-Host "  $rule" -ForegroundColor DarkCyan
@@ -499,6 +565,19 @@ $now = Get-Date -Format "yyyy-MM-dd HH:mm"
     SampleFolders     = @($subfolders)
 } | ConvertTo-Json | Out-File -FilePath "$projectPath\project_info.json" -Encoding UTF8
 
+# ── Write column_info.json ────────────────────────────────────────────────────
+if ($colInfoChanged) {
+    [System.IO.Directory]::CreateDirectory($analyticsPath) | Out-Null
+    [PSCustomObject]@{
+        ColumnID     = $analyticsCol
+        Description  = if ($colDesc -eq "") { $null } else { $colDesc }
+        Manufacturer = if ($colMfr -eq "") { $null } else { $colMfr }
+        SerialNumber = if ($colSerial -eq "") { $null } else { $colSerial }
+        FirstUseDate = if ($colFirstUse -eq "") { $null } else { $colFirstUse }
+        Created      = (Get-Date -Format "yyyy-MM-dd HH:mm")
+    } | ConvertTo-Json | Out-File $colInfoFile -Encoding UTF8
+}
+
 # ── Append to column_log.csv ──────────────────────────────────────────────────
 $logRow = [PSCustomObject]@{
     ProjectID         = $projectID
@@ -540,8 +619,8 @@ Write-Host "  Desc      : $(if ($colDesc -eq '') { '(none)' } else { $colDesc })
 Write-Host "  Trap      : $(if ($trapCol -eq '') { '(not specified)' } else { $trapCol })" -ForegroundColor White
 Write-Host "  TrapDesc  : $(if ($trapColDesc -eq '') { '(none)' } else { $trapColDesc })" -ForegroundColor DarkGray
 Write-Host "  $rule" -ForegroundColor DarkCyan
-Write-Host "  $analyticsCol\" -ForegroundColor DarkGray
-Write-Host "  \-- $projectName\" -ForegroundColor Green
+Write-Host "  Projects\$(Split-Path $analyticsPath -Leaf)\" -ForegroundColor DarkGray
+Write-Host "  \-- $(Split-Path $projectPath -Leaf)\" -ForegroundColor Green
 if ($subfolders.Count -eq 0) {
     Write-Host "      \-- Result\" -ForegroundColor Gray
 } else {
@@ -555,6 +634,7 @@ if ($subfolders.Count -eq 0) {
 }
 Write-Host "  $rule" -ForegroundColor DarkCyan
 Write-Host "  Metadata  : $projectPath\project_info.json" -ForegroundColor DarkCyan
+if ($colInfoChanged) { Write-Host "  ColInfo   : $colInfoFile" -ForegroundColor DarkCyan }
 Write-Host "  Log       : $logFile" -ForegroundColor DarkCyan
 Write-Host "  $border" -ForegroundColor DarkCyan
 

@@ -5,10 +5,24 @@ $rule   = "-" * $w
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host "   [3]  Backfill existing column" -ForegroundColor Cyan
-Write-Host "        Generates project_info.json and" -ForegroundColor DarkCyan
-Write-Host "        column_log.csv for existing folders" -ForegroundColor DarkCyan
+Write-Host "        Renames column folder with date prefix," -ForegroundColor DarkCyan
+Write-Host "        generates project_info.json and column_log.csv" -ForegroundColor DarkCyan
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host ""
+
+# -- Password -----------------------------------------------------------------
+$pwSS    = Read-Host "  Password" -AsSecureString
+$pwPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+               [Runtime.InteropServices.Marshal]::SecureStringToBSTR($pwSS))
+$pwHash  = [System.BitConverter]::ToString(
+               [System.Security.Cryptography.SHA256]::Create().ComputeHash(
+                   [System.Text.Encoding]::UTF8.GetBytes($pwPlain)
+               )).Replace("-","").ToLower()
+if ($pwHash -ne "15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225") {
+    Write-Host "  Access denied." -ForegroundColor Red
+    Write-Host ""
+    return
+}
 
 # -- Confirm ------------------------------------------------------------------
 $cItems = @("Run", "Back to main menu")
@@ -39,6 +53,7 @@ Write-Host ""
 # ── Root ──────────────────────────────────────────────────────────────────────
 $root = Read-Host "  Root directory (leave blank for Z:\Proteomics)"
 if ($root -eq "") { $root = "Z:\Proteomics" }
+$projectsRoot = Join-Path $root "Projects"
 
 # ── Analytics column ──────────────────────────────────────────────────────────
 Write-Host ""
@@ -67,8 +82,16 @@ if ($analyticsCol -eq "") {
     return
 }
 
-$analyticsPath = Join-Path $root $analyticsCol
-$logFile       = Join-Path $analyticsPath "column_log.csv"
+# ── Resolve analytics column folder (date-prefixed) ──────────────────────────
+$analyticsPath = $null
+if (Test-Path $projectsRoot) {
+    $existingColDir = Get-ChildItem $projectsRoot -Directory |
+        Where-Object { $_.Name -like "*_$analyticsCol" } |
+        Select-Object -First 1
+    if ($existingColDir) { $analyticsPath = $existingColDir.FullName }
+}
+if (-not $analyticsPath) { $analyticsPath = Join-Path $projectsRoot $analyticsCol }
+$logFile = Join-Path $analyticsPath "column_log.csv"
 
 if (-not (Test-Path $analyticsPath)) {
     Write-Host "  Path not found: $analyticsPath" -ForegroundColor Red
@@ -92,6 +115,17 @@ if (-not (Test-Path $analyticsPath)) {
         }
     }
     return
+}
+
+# ── Check if column folder needs a date prefix ────────────────────────────────
+$colFolderName    = Split-Path $analyticsPath -Leaf
+$colNeedsRename   = $colFolderName -notmatch '^\d{4}-\d{2}-\d{2}_'
+$newAnalyticsPath = $analyticsPath
+$newColFolderName = $colFolderName
+if ($colNeedsRename) {
+    $colCreated       = (Get-Item $analyticsPath).CreationTime.ToString("yyyy-MM-dd")
+    $newColFolderName = "${colCreated}_${analyticsCol}"
+    $newAnalyticsPath = Join-Path $projectsRoot $newColFolderName
 }
 
 # ── Scan folders ──────────────────────────────────────────────────────────────
@@ -129,6 +163,12 @@ Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host "  Preview  ($($projects.Count) folders  |  sorted by creation date)" -ForegroundColor Cyan
 Write-Host "  $rule" -ForegroundColor DarkCyan
+if ($colNeedsRename) {
+    Write-Host "  Column folder rename:" -ForegroundColor Cyan
+    Write-Host "    $colFolderName" -ForegroundColor DarkGray
+    Write-Host "    -> $newColFolderName" -ForegroundColor Yellow
+    Write-Host "  $rule" -ForegroundColor DarkCyan
+}
 
 $newNo = 1
 foreach ($p in $projects) {
@@ -196,14 +236,30 @@ while ($true) {
     }
 }
 
+# ── Rename column folder if needed ────────────────────────────────────────────
+if ($colNeedsRename) {
+    try {
+        Rename-Item -Path $analyticsPath -NewName $newColFolderName -ErrorAction Stop
+        $analyticsPath = $newAnalyticsPath
+        $logFile       = Join-Path $analyticsPath "column_log.csv"
+        Write-Host ""
+        Write-Host "  Renamed : $colFolderName -> $newColFolderName" -ForegroundColor Green
+    } catch {
+        Write-Host ""
+        Write-Host "  ERROR renaming column folder: $_" -ForegroundColor Red
+        Write-Host "  Continuing with original path." -ForegroundColor DarkYellow
+    }
+}
+
 # ── Write metadata ────────────────────────────────────────────────────────────
 Write-Host ""
 $logRows = @()
 $newNo   = 1
 
 foreach ($p in $projects) {
-    $jsonPath      = Join-Path $p.FullName "project_info.json"
-    $sampleFolders = Get-ChildItem -Path $p.FullName -Directory |
+    $pPath         = Join-Path $analyticsPath $p.Name
+    $jsonPath      = Join-Path $pPath "project_info.json"
+    $sampleFolders = Get-ChildItem -Path $pPath -Directory |
         Where-Object { $skip -notcontains $_.Name } |
         Select-Object -ExpandProperty Name
 
