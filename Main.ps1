@@ -1,4 +1,5 @@
 $host.UI.RawUI.WindowTitle = "Mass Spectrometry Utility Suite"
+Set-Location $PSScriptRoot
 
 # Type "item" = selectable entry; "sep" = non-selectable group label
 $entries = @(
