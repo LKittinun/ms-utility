@@ -402,6 +402,32 @@ build_report <- function(project_dir, result_dir, out_path) {
   pname <- basename(project_dir)
   now   <- format(Sys.time(), "%Y-%m-%d %H:%M")
 
+  # -- Load project metadata (ProjectID, PI) from project_info.json ------------
+  read_json_str <- function(path, field) {
+    txt <- tryCatch(paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = " "),
+                   error = function(e) "")
+    m <- regmatches(txt, regexpr(
+      sprintf('"%s"\\s*:\\s*"([^"]*)"', field), txt, perl = TRUE))
+    if (length(m) == 0) return("")
+    sub(sprintf('"%s"\\s*:\\s*"([^"]*)"', field), "\\1", m, perl = TRUE)
+  }
+
+  proj_id <- ""
+  pi_name <- ""
+  for (ip in c(file.path(project_dir, "project_info.json"),
+               file.path(dirname(project_dir), "project_info.json"))) {
+    if (file.exists(ip)) {
+      proj_id <- read_json_str(ip, "ProjectID")
+      pi_name <- read_json_str(ip, "PI")
+      break
+    }
+  }
+
+  subtitle_parts <- c(if (nchar(proj_id) > 0) sprintf("Project ID: %s", proj_id),
+                      if (nchar(pi_name)  > 0) sprintf("PI: %s",         pi_name),
+                      sprintf("Generated: %s", now),
+                      "Instrument software: DIA-NN")
+
   # -- Sheet: Project Overview -------------------------------------------------
   cat("  * Project overview & DIA-NN parameters\n")
   addWorksheet(wb, "Project Overview")
@@ -409,7 +435,7 @@ build_report <- function(project_dir, result_dir, out_path) {
 
   r <- add_title(wb, "Project Overview",
                  pname,
-                 sprintf("Proteomics Analysis Report   |   Generated: %s   |   Instrument software: DIA-NN", now))
+                 paste(subtitle_parts, collapse = "   |   "))
 
   # -- Narrative: how to use this report ----------------------------------------
   writeData(wb, "Project Overview",
@@ -682,7 +708,13 @@ build_report <- function(project_dir, result_dir, out_path) {
                     "Protein Group Quantification Matrix (QuantUMS)",
                     sprintf("Source: %s   |   Protein groups: %d   |   Samples: %d   |   DIA-NN q-value <= 0.01",
                             basename(pg_path), nrow(pg_df), length(sc)))
-    write_table(wb, "Protein Groups (pg_matrix)", pg_df, start_row = r6)
+    # Skip per-row alternating style — too slow for large matrices (thousands of addStyle calls)
+    writeData(wb, "Protein Groups (pg_matrix)", pg_df,
+              startRow    = r6,
+              startCol    = 1,
+              headerStyle = hs(bg = CLR_DARK_BLUE),
+              borders     = "surrounding",
+              borderStyle = "thin")
     meta_w   <- c(25, 20, 12, 45, 12, 22)[seq_along(intersect(PG_META, names(pg_df)))]
     sample_w <- rep(18, length(sc))
     setColWidths(wb, "Protein Groups (pg_matrix)",

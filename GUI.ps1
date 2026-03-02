@@ -36,10 +36,18 @@ Add-Type -AssemblyName WindowsBase
             </StackPanel>
         </Button>
 
-        <Button Name="btn3" Margin="0,0,0,0" Padding="10,6" HorizontalContentAlignment="Left">
+        <Button Name="btn3" Margin="0,0,0,3" Padding="10,6" HorizontalContentAlignment="Left">
             <StackPanel>
                 <TextBlock Text="[3]  Backfill existing column" FontSize="13"/>
                 <TextBlock Text="Generates project_info.json and column_log.csv for existing folders"
+                           FontSize="11" Foreground="Gray" Margin="0,2,0,0"/>
+            </StackPanel>
+        </Button>
+
+        <Button Name="btn4" Margin="0,0,0,0" Padding="10,6" HorizontalContentAlignment="Left">
+            <StackPanel>
+                <TextBlock Text="[4]  Find project" FontSize="13"/>
+                <TextBlock Text="Search by ID, project name, or PI"
                            FontSize="11" Foreground="Gray" Margin="0,2,0,0"/>
             </StackPanel>
         </Button>
@@ -51,21 +59,21 @@ Add-Type -AssemblyName WindowsBase
             <Separator VerticalAlignment="Center"/>
         </DockPanel>
 
-        <Button Name="btn4" Margin="0,0,0,3" Padding="10,6" HorizontalContentAlignment="Left">
+        <Button Name="btn5" Margin="0,0,0,3" Padding="10,6" HorizontalContentAlignment="Left">
             <StackPanel>
-                <TextBlock Text="[4]  Column usage report" FontSize="13"/>
+                <TextBlock Text="[5]  Column usage report" FontSize="13"/>
                 <TextBlock Text="All .raw files must be within column parent dir"
                            FontSize="11" Foreground="Gray" Margin="0,2,0,0"/>
             </StackPanel>
         </Button>
 
-        <Button Name="btn5" Margin="0,0,0,3" Padding="10,6" HorizontalContentAlignment="Left">
-            <TextBlock Text="[5]  DIA-NN metrics (plots + TSV)" FontSize="13"/>
+        <Button Name="btn6" Margin="0,0,0,3" Padding="10,6" HorizontalContentAlignment="Left">
+            <TextBlock Text="[6]  DIA-NN metrics (plots + TSV)" FontSize="13"/>
         </Button>
 
-        <Button Name="btn6" Margin="0,0,0,0" Padding="10,6" HorizontalContentAlignment="Left">
+        <Button Name="btn7" Margin="0,0,0,0" Padding="10,6" HorizontalContentAlignment="Left">
             <StackPanel>
-                <TextBlock Text="[6]  Service report (Excel)" FontSize="13"/>
+                <TextBlock Text="[7]  Service report (Excel)" FontSize="13"/>
                 <TextBlock Text="Analysis_Report.xlsx  (5 sheets)"
                            FontSize="11" Foreground="Gray" Margin="0,2,0,0"/>
             </StackPanel>
@@ -78,12 +86,12 @@ Add-Type -AssemblyName WindowsBase
             <Separator VerticalAlignment="Center"/>
         </DockPanel>
 
-        <Button Name="btn7" Margin="0,0,0,3" Padding="10,6" HorizontalContentAlignment="Left">
-            <TextBlock Text="[7]  Bulk convert .raw to mzML  (msConvert)" FontSize="13"/>
+        <Button Name="btn8" Margin="0,0,0,3" Padding="10,6" HorizontalContentAlignment="Left">
+            <TextBlock Text="[8]  Bulk convert .raw to mzML  (msConvert)" FontSize="13"/>
         </Button>
 
-        <Button Name="btn8" Margin="0,0,0,3" Padding="10,6" HorizontalContentAlignment="Left">
-            <TextBlock Text="[8]  Contaminant check  (mzsniffer)" FontSize="13"/>
+        <Button Name="btn9" Margin="0,0,0,3" Padding="10,6" HorizontalContentAlignment="Left">
+            <TextBlock Text="[9]  Contaminant check  (mzsniffer)" FontSize="13"/>
         </Button>
 
         <Button Name="btn99" Margin="0,0,0,0" Padding="10,6" HorizontalContentAlignment="Left">
@@ -112,11 +120,12 @@ function Invoke-Script ($scriptFile) {
 $window.FindName('btn1').Add_Click({   Invoke-Script '1_Project_init.ps1'         })
 $window.FindName('btn2').Add_Click({   Invoke-Script '2_Repair_project_order.ps1' })
 $window.FindName('btn3').Add_Click({   Invoke-Script '3_Backfill_column.ps1'      })
-$window.FindName('btn4').Add_Click({   Invoke-Script '4_Column_usage.ps1'         })
-$window.FindName('btn5').Add_Click({   Invoke-Script '5_DIANN_metrics.ps1'        })
-$window.FindName('btn6').Add_Click({   Invoke-Script '6_Report_generator.ps1'     })
-$window.FindName('btn7').Add_Click({   Invoke-Script '7_Bulk_msConvert.ps1'       })
-$window.FindName('btn8').Add_Click({   Invoke-Script '8_Contaminant_check.ps1'    })
+$window.FindName('btn4').Add_Click({   Invoke-Script '4_Find_project.ps1'         })
+$window.FindName('btn5').Add_Click({   Invoke-Script '5_Column_usage.ps1'         })
+$window.FindName('btn6').Add_Click({   Invoke-Script '6_DIANN_metrics.ps1'        })
+$window.FindName('btn7').Add_Click({   Invoke-Script '7_Report_generator.ps1'     })
+$window.FindName('btn8').Add_Click({   Invoke-Script '8_Bulk_msConvert.ps1'       })
+$window.FindName('btn9').Add_Click({   Invoke-Script '9_Contaminant_check.ps1'    })
 $window.FindName('btn99').Add_Click({  Invoke-Script '99_Clear_files.ps1'         })
 $window.FindName('btnExit').Add_Click({ $window.Close() })
 
