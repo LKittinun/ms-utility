@@ -1,2 +1,12 @@
 .claude/
 CLAUDE.md
+
+# Third-party tools (not our code)
+mzsniffer/
+
+# Local lab data (column libraries)
+data/
+
+# Dev/internal notes
+NOTES.md
+CLAUDE.md
