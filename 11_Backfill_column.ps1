@@ -5,7 +5,7 @@ $prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history")
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
-Write-Host "   [3]  Backfill existing column" -ForegroundColor Cyan
+Write-Host "  [11]  Backfill existing column" -ForegroundColor Cyan
 Write-Host "        Renames column folder with date prefix," -ForegroundColor DarkCyan
 Write-Host "        generates project_info.json and column_log.csv" -ForegroundColor DarkCyan
 Write-Host "  $border" -ForegroundColor DarkCyan

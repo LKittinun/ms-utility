@@ -5,7 +5,7 @@ $prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history")
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
-Write-Host "   [2]  Repair project order" -ForegroundColor Cyan
+Write-Host "  [10]  Repair project order" -ForegroundColor Cyan
 Write-Host "        Re-numbers projects by creation date" -ForegroundColor DarkCyan
 Write-Host "        and rebuilds column_log.csv" -ForegroundColor DarkCyan
 Write-Host "  $border" -ForegroundColor DarkCyan

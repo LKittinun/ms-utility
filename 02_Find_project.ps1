@@ -8,7 +8,7 @@ function Show-Header {
     Clear-Host
     Write-Host ""
     Write-Host "  $border" -ForegroundColor DarkCyan
-    Write-Host "   [4]  Find project" -ForegroundColor Cyan
+    Write-Host "   [2]  Find project" -ForegroundColor Cyan
     Write-Host "        Search by ID, project name, or PI" -ForegroundColor DarkCyan
     Write-Host "  $border" -ForegroundColor DarkCyan
     Write-Host ""

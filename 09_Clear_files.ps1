@@ -4,7 +4,7 @@ $rule   = "-" * $w
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
-Write-Host "  [12]  Clear method files            (*sld *meth)" -ForegroundColor Cyan
+Write-Host "   [9]  Clear method files            (*sld *meth)" -ForegroundColor Cyan
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host ""
 

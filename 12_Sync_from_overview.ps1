@@ -7,7 +7,7 @@ $prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history")
 Clear-Host
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
-Write-Host "   [6]  Sync from overview CSV" -ForegroundColor Cyan
+Write-Host "  [12]  Sync from overview CSV" -ForegroundColor Cyan
 Write-Host "        Apply edits from overview CSV back to project JSON" -ForegroundColor DarkCyan
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host ""
