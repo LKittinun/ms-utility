@@ -8,8 +8,9 @@ $entries = @(
     @{ Type = "item"; Label = "[2]  Repair project order";         Script = ".\02_Repair_project_order.ps1";  Color = "White"    }
     @{ Type = "item"; Label = "[3]  Backfill existing column";     Script = ".\03_Backfill_column.ps1";       Color = "White"    }
     @{ Type = "item"; Label = "[4]  Find project";                  Script = ".\04_Find_project.ps1";         Color = "White"    }
-    @{ Type = "item"; Label = "[5]  Projects overview            (Excel)"; Script = ".\05_Projects_overview.ps1"; Color = "White"    }
-    @{ Type = "sep";  Label = "  Analysis"                                                                       }
+    @{ Type = "item"; Label = "[5]  Projects overview            (Excel)"; Script = ".\05_Projects_overview.ps1";  Color = "White"    }
+    @{ Type = "item"; Label = "[11] Sync from overview CSV";              Script = ".\11_Sync_from_overview.ps1"; Color = "White"    }
+    @{ Type = "sep";  Label = "  Analysis"                                                                        }
     @{ Type = "item"; Label = "[6]  Column usage report";           Script = ".\06_Column_usage.ps1";          Color = "White"    }
     @{ Type = "item"; Label = "[7]  DIA-NN metrics                (plots + TSV)"; Script = ".\07_DIANN_metrics.ps1";    Color = "White" }
     @{ Type = "item"; Label = "[8]  Service report                (Excel)";       Script = ".\08_Report_generator.ps1";  Color = "White" }
