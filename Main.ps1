@@ -4,17 +4,17 @@ Set-Location $PSScriptRoot
 # Type "item" = selectable entry; "sep" = non-selectable group label
 $entries = @(
     @{ Type = "sep";  Label = "  Project"                                                                        }
-    @{ Type = "item"; Label = "[1]  Project folder initializer";   Script = ".\1_Project_init.ps1";          Color = "White"    }
-    @{ Type = "item"; Label = "[2]  Repair project order";         Script = ".\2_Repair_project_order.ps1";  Color = "White"    }
-    @{ Type = "item"; Label = "[3]  Backfill existing column";     Script = ".\3_Backfill_column.ps1";       Color = "White"    }
-    @{ Type = "item"; Label = "[4]  Find project";                  Script = ".\4_Find_project.ps1";         Color = "White"    }
-    @{ Type = "item"; Label = "[5]  Projects overview            (Excel)"; Script = ".\5_Projects_overview.ps1"; Color = "White"    }
+    @{ Type = "item"; Label = "[1]  Project folder initializer";   Script = ".\01_Project_init.ps1";          Color = "White"    }
+    @{ Type = "item"; Label = "[2]  Repair project order";         Script = ".\02_Repair_project_order.ps1";  Color = "White"    }
+    @{ Type = "item"; Label = "[3]  Backfill existing column";     Script = ".\03_Backfill_column.ps1";       Color = "White"    }
+    @{ Type = "item"; Label = "[4]  Find project";                  Script = ".\04_Find_project.ps1";         Color = "White"    }
+    @{ Type = "item"; Label = "[5]  Projects overview            (Excel)"; Script = ".\05_Projects_overview.ps1"; Color = "White"    }
     @{ Type = "sep";  Label = "  Analysis"                                                                       }
-    @{ Type = "item"; Label = "[6]  Column usage report";           Script = ".\6_Column_usage.ps1";          Color = "White"    }
-    @{ Type = "item"; Label = "[7]  DIA-NN metrics                (plots + TSV)"; Script = ".\7_DIANN_metrics.ps1";    Color = "White" }
-    @{ Type = "item"; Label = "[8]  Service report                (Excel)";       Script = ".\8_Report_generator.ps1";  Color = "White" }
+    @{ Type = "item"; Label = "[6]  Column usage report";           Script = ".\06_Column_usage.ps1";          Color = "White"    }
+    @{ Type = "item"; Label = "[7]  DIA-NN metrics                (plots + TSV)"; Script = ".\07_DIANN_metrics.ps1";    Color = "White" }
+    @{ Type = "item"; Label = "[8]  Service report                (Excel)";       Script = ".\08_Report_generator.ps1";  Color = "White" }
     @{ Type = "sep";  Label = "  Miscellaneous"                                                                  }
-    @{ Type = "item"; Label = "[9]  Bulk convert .raw to mzML     (msConvert)"; Script = ".\9_Bulk_msConvert.ps1";    Color = "DarkGray" }
+    @{ Type = "item"; Label = "[9]  Bulk convert .raw to mzML     (msConvert)"; Script = ".\09_Bulk_msConvert.ps1";    Color = "DarkGray" }
     @{ Type = "item"; Label = "[10] Contaminant check             (mzsniffer)"; Script = ".\10_Contaminant_check.ps1"; Color = "DarkGray" }
     @{ Type = "item"; Label = "[99] Clear method files            (*sld *meth)"; Script = ".\99_Clear_files.ps1";     Color = "DarkGray" }
     @{ Type = "sep";  Label = ""                                                                                }
