@@ -1,6 +1,7 @@
-$w      = 55
-$border = "=" * $w
-$rule   = "-" * $w
+$w          = 55
+$border     = "=" * $w
+$rule       = "-" * $w
+$prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history")
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
@@ -129,9 +130,8 @@ if ($colNeedsRename) {
 }
 
 # ── Scan folders ──────────────────────────────────────────────────────────────
-$skip     = @("Column_usage_history")
 $projects = Get-ChildItem -Path $analyticsPath -Directory |
-    Where-Object { $skip -notcontains $_.Name } |
+    Where-Object { $prohibited -notcontains ($_.Name -replace '^\d{4}-\d{2}-\d{2}_','').ToLower() } |
     Sort-Object CreationTime
 
 if ($projects.Count -eq 0) {
@@ -176,7 +176,7 @@ foreach ($p in $projects) {
     $hasJson  = Test-Path $jsonPath
 
     $sampleFolders = Get-ChildItem -Path $p.FullName -Directory |
-        Where-Object { $skip -notcontains $_.Name } |
+        Where-Object { $prohibited -notcontains ($_.Name -replace '^\d{4}-\d{2}-\d{2}_','').ToLower() } |
         Select-Object -ExpandProperty Name
 
     if ($hasJson) {
@@ -260,7 +260,7 @@ foreach ($p in $projects) {
     $pPath         = Join-Path $analyticsPath $p.Name
     $jsonPath      = Join-Path $pPath "project_info.json"
     $sampleFolders = Get-ChildItem -Path $pPath -Directory |
-        Where-Object { $skip -notcontains $_.Name } |
+        Where-Object { $prohibited -notcontains ($_.Name -replace '^\d{4}-\d{2}-\d{2}_','').ToLower() } |
         Select-Object -ExpandProperty Name
 
     if (Test-Path $jsonPath) {

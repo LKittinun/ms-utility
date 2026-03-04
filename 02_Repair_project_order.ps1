@@ -1,6 +1,7 @@
-$w      = 55
-$border = "=" * $w
-$rule   = "-" * $w
+$w          = 55
+$border     = "=" * $w
+$rule       = "-" * $w
+$prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history")
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
@@ -119,6 +120,7 @@ if (-not (Test-Path $analyticsPath)) {
 
 # ── Scan projects ─────────────────────────────────────────────────────────────
 $projects = Get-ChildItem -Path $analyticsPath -Directory |
+    Where-Object { $prohibited -notcontains ($_.Name -replace '^\d{4}-\d{2}-\d{2}_','').ToLower() } |
     Where-Object { Test-Path (Join-Path $_.FullName "project_info.json") } |
     ForEach-Object {
         $json = Get-Content (Join-Path $_.FullName "project_info.json") -Raw | ConvertFrom-Json

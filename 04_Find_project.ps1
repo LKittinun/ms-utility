@@ -1,7 +1,8 @@
-$w      = 55
-$border = "=" * $w
-$rule   = "-" * $w
-$root   = "Z:\Proteomics\Projects"
+$w          = 55
+$border     = "=" * $w
+$rule       = "-" * $w
+$root       = "Z:\Proteomics\Projects"
+$prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history")
 
 function Show-Header {
     Clear-Host
@@ -25,6 +26,9 @@ while ($true) {
     Write-Host "  Searching $root ..." -ForegroundColor DarkCyan
 
     $jsonFiles = @(Get-ChildItem -Path $root -Recurse -Filter "project_info.json" -ErrorAction SilentlyContinue)
+    $jsonFiles = @($jsonFiles | Where-Object {
+        $prohibited -notcontains ($_.Directory.Name -replace '^\d{4}-\d{2}-\d{2}_','').ToLower()
+    })
 
     $results = @()
     foreach ($jf in $jsonFiles) {

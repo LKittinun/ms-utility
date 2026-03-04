@@ -1,6 +1,7 @@
-$w      = 55
-$border = "=" * $w
-$rule   = "-" * $w
+$w          = 55
+$border     = "=" * $w
+$rule       = "-" * $w
+$prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history")
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
@@ -267,6 +268,10 @@ if ($projectName -eq "") {
     Write-Host "  Project name is empty after sanitizing invalid characters." -ForegroundColor Red
     return
 }
+if ($prohibited -contains $projectName.ToLower()) {
+    Write-Host "  '$projectName' is a reserved name and cannot be used as a project name." -ForegroundColor Red
+    return
+}
 
 $datePrefix  = Get-Date -Format "yyyy-MM-dd"
 $folderName  = "${datePrefix}_${projectName}"
@@ -402,6 +407,12 @@ while ($true) {
         break
     }
     $parsed = @($subfoldersRaw -split "," | ForEach-Object { ($_.Trim() -replace '[\s]+', '_' -replace '[<>:"/\\|?*]', '') } | Where-Object { $_ -ne "" })
+    # Reserved names
+    $reservedHits = @($parsed | Where-Object { $prohibited -contains $_.ToLower() })
+    if ($reservedHits.Count -gt 0) {
+        Write-Host "  Reserved names not allowed as subfolders: $($reservedHits -join ', ')" -ForegroundColor Red
+        continue
+    }
     # Duplicates within new input
     $seen  = @{}
     $dupes = @()
