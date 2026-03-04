@@ -6,7 +6,7 @@ $root   = "Z:\Proteomics\Projects"
 Clear-Host
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
-Write-Host "  [11]  Sync from overview CSV" -ForegroundColor Cyan
+Write-Host "   [6]  Sync from overview CSV" -ForegroundColor Cyan
 Write-Host "        Apply edits from overview CSV back to project JSON" -ForegroundColor DarkCyan
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host ""

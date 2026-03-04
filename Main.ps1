@@ -9,14 +9,14 @@ $entries = @(
     @{ Type = "item"; Label = "[3]  Backfill existing column";     Script = ".\03_Backfill_column.ps1";       Color = "White"    }
     @{ Type = "item"; Label = "[4]  Find project";                  Script = ".\04_Find_project.ps1";         Color = "White"    }
     @{ Type = "item"; Label = "[5]  Projects overview            (Excel)"; Script = ".\05_Projects_overview.ps1";  Color = "White"    }
-    @{ Type = "item"; Label = "[11] Sync from overview CSV";              Script = ".\11_Sync_from_overview.ps1"; Color = "White"    }
+    @{ Type = "item"; Label = "[6]  Sync from overview CSV";              Script = ".\06_Sync_from_overview.ps1"; Color = "White"    }
     @{ Type = "sep";  Label = "  Analysis"                                                                        }
-    @{ Type = "item"; Label = "[6]  Column usage report";           Script = ".\06_Column_usage.ps1";          Color = "White"    }
-    @{ Type = "item"; Label = "[7]  DIA-NN metrics                (plots + TSV)"; Script = ".\07_DIANN_metrics.ps1";    Color = "White" }
-    @{ Type = "item"; Label = "[8]  Service report                (Excel)";       Script = ".\08_Report_generator.ps1";  Color = "White" }
-    @{ Type = "sep";  Label = "  Miscellaneous"                                                                  }
-    @{ Type = "item"; Label = "[9]  Bulk convert .raw to mzML     (msConvert)"; Script = ".\09_Bulk_msConvert.ps1";    Color = "DarkGray" }
-    @{ Type = "item"; Label = "[10] Contaminant check             (mzsniffer)"; Script = ".\10_Contaminant_check.ps1"; Color = "DarkGray" }
+    @{ Type = "item"; Label = "[7]  Column usage report";           Script = ".\07_Column_usage.ps1";           Color = "White"    }
+    @{ Type = "item"; Label = "[8]  DIA-NN metrics                (plots + TSV)"; Script = ".\08_DIANN_metrics.ps1";    Color = "White" }
+    @{ Type = "item"; Label = "[9]  Service report                (Excel)";       Script = ".\09_Report_generator.ps1";  Color = "White" }
+    @{ Type = "sep";  Label = "  Miscellaneous"                                                                   }
+    @{ Type = "item"; Label = "[10] Bulk convert .raw to mzML     (msConvert)"; Script = ".\10_Bulk_msConvert.ps1";    Color = "DarkGray" }
+    @{ Type = "item"; Label = "[11] Contaminant check             (mzsniffer)"; Script = ".\11_Contaminant_check.ps1"; Color = "DarkGray" }
     @{ Type = "item"; Label = "[99] Clear method files            (*sld *meth)"; Script = ".\99_Clear_files.ps1";     Color = "DarkGray" }
     @{ Type = "sep";  Label = ""                                                                                }
     @{ Type = "item"; Label = "Exit";                              Script = $null;                           Color = "DarkYellow" }
