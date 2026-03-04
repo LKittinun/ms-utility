@@ -12,6 +12,20 @@ Write-Host "        Apply edits from overview CSV back to project JSON" -Foregro
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host ""
 
+# -- Password -----------------------------------------------------------------
+$pwSS    = Read-Host "  Password" -AsSecureString
+$pwPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+               [Runtime.InteropServices.Marshal]::SecureStringToBSTR($pwSS))
+$pwHash  = [System.BitConverter]::ToString(
+               [System.Security.Cryptography.SHA256]::Create().ComputeHash(
+                   [System.Text.Encoding]::UTF8.GetBytes($pwPlain)
+               )).Replace("-","").ToLower()
+if ($pwHash -ne "15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225") {
+    Write-Host "  Access denied." -ForegroundColor Red
+    Write-Host ""
+    return
+}
+
 # -- Confirm ------------------------------------------------------------------
 $cItems = @("Run", "Back to main menu")
 $cSel   = 0
