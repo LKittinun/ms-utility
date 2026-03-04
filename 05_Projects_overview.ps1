@@ -99,6 +99,19 @@ foreach ($jf in $jsonFiles) {
 
 $rows = @($rows | Sort-Object Column, ProjectNo)
 
+# -- Load column library ------------------------------------------------------
+$colLibFile = ".\data\columns.json"
+$colLib = @()
+if (Test-Path $colLibFile) {
+    $loaded = Get-Content $colLibFile -Raw | ConvertFrom-Json
+    if ($loaded) {
+        $colLib = @($loaded)
+        if ($colLib.Count -gt 0 -and $colLib[0] -is [PSCustomObject]) {
+            $colLib = @($colLib | ForEach-Object { $_.Description })
+        }
+    }
+}
+
 # -- Filters ------------------------------------------------------------------
 Write-Host ""
 Write-Host "  $rule" -ForegroundColor DarkCyan
@@ -108,8 +121,51 @@ Write-Host ""
 $fDateFrom = (Read-Host "  Date from (yyyy-MM-dd)").Trim()
 $fDateTo   = (Read-Host "  Date to   (yyyy-MM-dd)").Trim()
 $fPI       = (Read-Host "  PI").Trim()
-$fColumn   = (Read-Host "  Column ID or description").Trim()
 Write-Host ""
+
+# -- Column library picker ----------------------------------------------------
+$fColumn = ""
+if ($colLib.Count -gt 0) {
+    Write-Host "  Column description  (Enter = select   Esc = no filter):" -ForegroundColor Cyan
+    Write-Host ""
+
+    $cLibSel = 0
+    $cLibTop = [Console]::CursorTop
+
+    for ($i = 0; $i -lt $colLib.Count; $i++) {
+        [Console]::SetCursorPosition(0, $cLibTop + $i)
+        $text = ("    " + $colLib[$i]).PadRight($w + 4)
+        if ($i -eq $cLibSel) { Write-Host $text -ForegroundColor Black -BackgroundColor Cyan -NoNewline }
+        else                  { Write-Host $text -ForegroundColor White -NoNewline }
+    }
+    [Console]::SetCursorPosition(0, $cLibTop + $colLib.Count)
+
+    :colLibLoop while ($true) {
+        $ck = [Console]::ReadKey($true)
+        if ($ck.Key -eq [ConsoleKey]::UpArrow -or $ck.Key -eq [ConsoleKey]::DownArrow) {
+            $prev    = $cLibSel
+            $cLibSel = if ($ck.Key -eq [ConsoleKey]::UpArrow) {
+                           ($cLibSel - 1 + $colLib.Count) % $colLib.Count
+                       } else {
+                           ($cLibSel + 1) % $colLib.Count
+                       }
+            [Console]::SetCursorPosition(0, $cLibTop + $prev)
+            Write-Host ("    " + $colLib[$prev]).PadRight($w + 4) -ForegroundColor White -NoNewline
+            [Console]::SetCursorPosition(0, $cLibTop + $cLibSel)
+            Write-Host ("    " + $colLib[$cLibSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
+            [Console]::SetCursorPosition(0, $cLibTop + $colLib.Count)
+        } elseif ($ck.Key -eq [ConsoleKey]::Enter) {
+            $fColumn = $colLib[$cLibSel]
+            break colLibLoop
+        } elseif ($ck.Key -eq [ConsoleKey]::Escape) {
+            break colLibLoop
+        }
+    }
+    Write-Host ""
+} else {
+    $fColumn = (Read-Host "  Column ID or description").Trim()
+    Write-Host ""
+}
 
 # Parse and validate date inputs
 $dtFrom = $null; $dtTo = $null
@@ -149,7 +205,7 @@ $activeFilters = @()
 if ($fDateFrom -ne "") { $activeFilters += "from $fDateFrom" }
 if ($fDateTo   -ne "") { $activeFilters += "to $fDateTo" }
 if ($fPI       -ne "") { $activeFilters += "PI=$fPI" }
-if ($fColumn   -ne "") { $activeFilters += "column=$fColumn" }
+if ($fColumn   -ne "") { $activeFilters += "column: $fColumn" }
 $filterLabel = if ($activeFilters.Count -gt 0) { $activeFilters -join "  " } else { "none" }
 Write-Host "  Filters: $filterLabel" -ForegroundColor DarkCyan
 Write-Host ""
