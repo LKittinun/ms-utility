@@ -1,6 +1,10 @@
 $host.UI.RawUI.WindowTitle = "Mass Spectrometry Utility Suite"
 Set-Location $PSScriptRoot
 
+$configFile  = Join-Path $PSScriptRoot "config.json"
+$_cfg        = if (Test-Path $configFile) { Get-Content $configFile -Raw | ConvertFrom-Json } else { $null }
+$currentRoot = if ($_cfg -and $_cfg.Root) { $_cfg.Root } else { "Z:\Proteomics" }
+
 # Type "item" = selectable entry; "sep" = non-selectable group label
 $entries = @(
     @{ Type = "sep";  Label = "  Project"                                                                             }
@@ -19,6 +23,8 @@ $entries = @(
     @{ Type = "item"; Label = "[10] Repair project order";         Script = ".\10_Repair_project_order.ps1";     Color = "DarkGray"  }
     @{ Type = "item"; Label = "[11] Backfill existing column";     Script = ".\11_Backfill_column.ps1";          Color = "DarkGray"  }
     @{ Type = "item"; Label = "[12] Sync from overview CSV";       Script = ".\12_Sync_from_overview.ps1";       Color = "DarkGray"  }
+    @{ Type = "sep";  Label = "  Settings"                                                                          }
+    @{ Type = "item"; Label = "Set root directory";              Script = "__SET_ROOT__";                Color = "DarkGray"   }
     @{ Type = "sep";  Label = ""                                                                                      }
     @{ Type = "item"; Label = "Exit";                              Script = $null;                               Color = "DarkYellow" }
 )
@@ -64,7 +70,8 @@ for ($i = 0; $i -lt $entries.Count; $i++) {
 
 [Console]::SetCursorPosition(0, $menuTop + $entries.Count + 1)
 Write-Host "  $rule" -ForegroundColor DarkCyan
-Write-Host "  Dir : $((Get-Location).Path)" -ForegroundColor DarkYellow
+Write-Host "  Dir  : $((Get-Location).Path)" -ForegroundColor DarkYellow
+Write-Host "  Root : $currentRoot" -ForegroundColor DarkGray
 Write-Host "  Up / Down + Enter  |  Esc to exit" -ForegroundColor DarkCyan
 Write-Host ""
 
@@ -81,9 +88,16 @@ while ($true) {
     elseif ($key.Key -eq [ConsoleKey]::Enter) {
         $chosen = $entries[$selectable[$selIdx]]
         if ($null -eq $chosen.Script) {
-            [Console]::SetCursorPosition(0, $menuTop + $entries.Count + 5)
+            [Console]::SetCursorPosition(0, $menuTop + $entries.Count + 6)
             Write-Host "  Exiting..." -ForegroundColor DarkYellow
             return
+        }
+        if ($chosen.Script -eq "__SET_ROOT__") {
+            [Console]::SetCursorPosition(0, $menuTop + $entries.Count + 6)
+            $newRoot = Read-Host "  New root directory (blank = keep $currentRoot)"
+            if ($newRoot -ne "") { $currentRoot = $newRoot }
+            [pscustomobject]@{ Root = $currentRoot } | ConvertTo-Json | Out-File $configFile -Encoding UTF8
+            Clear-Host; .\Main.ps1; return
         }
         Clear-Host
         & $chosen.Script

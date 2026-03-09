@@ -37,9 +37,10 @@ Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoN
 Write-Host ""
 
 # ── Root ──────────────────────────────────────────────────────────────────────
-$root = Read-Host "  Root directory (leave blank for Z:\Proteomics)"
-if ($root -eq "") { $root = "Z:\Proteomics" }
+$_cfg         = if (Test-Path (Join-Path $PSScriptRoot "config.json")) { Get-Content (Join-Path $PSScriptRoot "config.json") -Raw | ConvertFrom-Json } else { $null }
+$root         = if ($_cfg -and $_cfg.Root) { $_cfg.Root } else { "Z:\Proteomics" }
 $projectsRoot = Join-Path $root "Projects"
+Write-Host "  Root : $root" -ForegroundColor DarkGray
 
 # ── Column library ────────────────────────────────────────────────────────────
 $colLibFile = ".\data\columns.json"
@@ -63,7 +64,7 @@ Write-Host "  $rule" -ForegroundColor DarkCyan
 Write-Host "  Analytics column" -ForegroundColor Cyan
 Write-Host "  $rule" -ForegroundColor DarkCyan
 Write-Host ""
-$analyticsCol = Read-Host "  Column ID (e.g. C20533039)"
+$analyticsCol = Read-Host "  Column ID (e.g. C20533039, no date prefix)"
 
 if ($analyticsCol -eq "") {
     Write-Host "  Analytics column cannot be empty." -ForegroundColor Red
@@ -205,14 +206,10 @@ if ($null -eq $colInfoData) {
     Write-Host "  New column detected - enter column details (all optional):" -ForegroundColor Cyan
     Write-Host "  $rule" -ForegroundColor DarkCyan
     Write-Host ""
-    $colMfr       = Read-Host "  Manufacturer"
-    $colSerial    = Read-Host "  Serial number"
     $colFirstUse = Read-Host "  First use date (yyyy-MM-dd)"
     $colInfoChanged = $true
 } else {
     # Existing column - carry over fields
-    $colMfr       = if ($colInfoData.Manufacturer) { $colInfoData.Manufacturer } else { "" }
-    $colSerial    = if ($colInfoData.SerialNumber)  { $colInfoData.SerialNumber }  else { "" }
     $colFirstUse = if ($colInfoData.FirstUseDate)  { $colInfoData.FirstUseDate }  else { "" }
     Write-Host ""
     Write-Host "  Column: $analyticsCol" -ForegroundColor Cyan
@@ -478,8 +475,6 @@ Write-Host "    Project   : $projectName" -ForegroundColor White
 if ($colInfoChanged) {
     Write-Host ""
     Write-Host "  New column_info.json:" -ForegroundColor Cyan
-    Write-Host "    Manufacturer : $(if ($colMfr -eq '') { '(not specified)' } else { $colMfr })" -ForegroundColor White
-    Write-Host "    Serial no.   : $(if ($colSerial -eq '') { '(not specified)' } else { $colSerial })" -ForegroundColor White
     Write-Host "    First use date: $(if ($colFirstUse -eq '') { '(not specified)' } else { $colFirstUse })" -ForegroundColor White
 }
 Write-Host ""
@@ -582,8 +577,6 @@ if ($colInfoChanged) {
     [PSCustomObject]@{
         ColumnID     = $analyticsCol
         Description  = if ($colDesc -eq "") { $null } else { $colDesc }
-        Manufacturer = if ($colMfr -eq "") { $null } else { $colMfr }
-        SerialNumber = if ($colSerial -eq "") { $null } else { $colSerial }
         FirstUseDate = if ($colFirstUse -eq "") { $null } else { $colFirstUse }
         Created      = (Get-Date -Format "yyyy-MM-dd HH:mm")
     } | ConvertTo-Json | Out-File $colInfoFile -Encoding UTF8

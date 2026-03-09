@@ -1,7 +1,9 @@
 $w          = 55
 $border     = "=" * $w
 $rule       = "-" * $w
-$root       = "Z:\Proteomics\Projects"
+$_cfg       = if (Test-Path (Join-Path $PSScriptRoot "config.json")) { Get-Content (Join-Path $PSScriptRoot "config.json") -Raw | ConvertFrom-Json } else { $null }
+$_rootBase  = if ($_cfg -and $_cfg.Root) { $_cfg.Root } else { "Z:\Proteomics" }
+$root       = Join-Path $_rootBase "Projects"
 $prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history")
 
 function Show-Header {
@@ -9,7 +11,7 @@ function Show-Header {
     Write-Host ""
     Write-Host "  $border" -ForegroundColor DarkCyan
     Write-Host "   [2]  Find project" -ForegroundColor Cyan
-    Write-Host "        Search by ID, project name, or PI" -ForegroundColor DarkCyan
+    Write-Host "        Search by column, project name, PI, or project ID" -ForegroundColor DarkCyan
     Write-Host "  $border" -ForegroundColor DarkCyan
     Write-Host ""
 }
@@ -25,7 +27,15 @@ while ($true) {
     Write-Host ""
     Write-Host "  Searching $root ..." -ForegroundColor DarkCyan
 
+    if (-not (Test-Path $root)) {
+        Write-Host "  Path not found: $root" -ForegroundColor Red
+        Write-Host "  Use 'Set root directory' in the main menu to fix this." -ForegroundColor DarkGray
+        Write-Host ""
+        continue
+    }
+
     $jsonFiles = @(Get-ChildItem -Path $root -Recurse -Filter "project_info.json" -ErrorAction SilentlyContinue)
+    Write-Host "  Found $($jsonFiles.Count) project_info.json file(s)" -ForegroundColor DarkGray
     $jsonFiles = @($jsonFiles | Where-Object {
         $prohibited -notcontains ($_.Directory.Name -replace '^\d{4}-\d{2}-\d{2}_','').ToLower()
     })
@@ -36,9 +46,11 @@ while ($true) {
 
         $match = $false
         foreach ($term in $terms) {
-            if (($info.ProjectID -and $info.ProjectID -like "*$term*") -or
-                ($info.Project   -and $info.Project   -like "*$term*") -or
-                ($info.PI        -and $info.PI        -like "*$term*")) {
+            if (($info.ProjectID       -and $info.ProjectID       -like "*$term*") -or
+                ($info.Project         -and $info.Project         -like "*$term*") -or
+                ($info.PI              -and $info.PI              -like "*$term*") -or
+                ($info.AnalyticsColumn -and $info.AnalyticsColumn -like "*$term*") -or
+                ($info.TrapColumn      -and $info.TrapColumn      -like "*$term*")) {
                 $match = $true; break
             }
         }

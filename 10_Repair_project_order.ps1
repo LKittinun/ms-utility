@@ -52,9 +52,10 @@ Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoN
 Write-Host ""
 
 # ── Root ──────────────────────────────────────────────────────────────────────
-$root = Read-Host "  Root directory (leave blank for Z:\Proteomics)"
-if ($root -eq "") { $root = "Z:\Proteomics" }
+$_cfg         = if (Test-Path (Join-Path $PSScriptRoot "config.json")) { Get-Content (Join-Path $PSScriptRoot "config.json") -Raw | ConvertFrom-Json } else { $null }
+$root         = if ($_cfg -and $_cfg.Root) { $_cfg.Root } else { "Z:\Proteomics" }
 $projectsRoot = Join-Path $root "Projects"
+Write-Host "  Root : $root" -ForegroundColor DarkGray
 
 # ── Analytics column ──────────────────────────────────────────────────────────
 Write-Host ""

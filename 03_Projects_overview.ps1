@@ -1,7 +1,9 @@
 $w          = 55
 $border     = "=" * $w
 $rule       = "-" * $w
-$root       = "Z:\Proteomics\Projects"
+$_cfg       = if (Test-Path (Join-Path $PSScriptRoot "config.json")) { Get-Content (Join-Path $PSScriptRoot "config.json") -Raw | ConvertFrom-Json } else { $null }
+$_rootBase  = if ($_cfg -and $_cfg.Root) { $_cfg.Root } else { "Z:\Proteomics" }
+$root       = Join-Path $_rootBase "Projects"
 $prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history")
 
 Clear-Host
@@ -39,13 +41,12 @@ Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoN
 Write-Host ""
 
 # -- Check ImportExcel --------------------------------------------------------
-$hasImportExcel = $null -ne (Get-Module -ListAvailable -Name ImportExcel)
-if (-not $hasImportExcel) {
-    Write-Host "  ImportExcel module not found." -ForegroundColor Yellow
-    Write-Host "  Install with: Install-Module ImportExcel -Scope CurrentUser" -ForegroundColor DarkCyan
-    Write-Host "  Falling back to CSV export." -ForegroundColor DarkCyan
-    Write-Host ""
+if ($null -eq (Get-Module -ListAvailable -Name ImportExcel)) {
+    Write-Host "  Installing ImportExcel..." -ForegroundColor DarkCyan
+    try { Install-Module ImportExcel -Scope CurrentUser -Force -ErrorAction Stop }
+    catch { Write-Host "  Install failed - will export CSV instead." -ForegroundColor Yellow }
 }
+$hasImportExcel = $null -ne (Get-Module -ListAvailable -Name ImportExcel)
 
 # -- Scan ---------------------------------------------------------------------
 Write-Host "  Scanning $root ..." -ForegroundColor DarkCyan
@@ -180,6 +181,18 @@ if ($fDateFrom -ne "") {
 if ($fDateTo -ne "") {
     try   { $dtTo = [datetime]::ParseExact($fDateTo, "yyyy-MM-dd", $null) }
     catch { Write-Host "  Invalid 'to' date - ignored." -ForegroundColor Yellow; $fDateTo = "" }
+}
+
+# Default blank dates: from = oldest project, to = today
+if ($fDateFrom -eq "") {
+    $dtFrom = @($rows | Where-Object { $_.Created -ne "-" } | ForEach-Object {
+        try { [datetime]::ParseExact($_.Created.Substring(0,10), "yyyy-MM-dd", $null) } catch { $null }
+    } | Where-Object { $_ }) | Sort-Object | Select-Object -First 1
+    if ($dtFrom) { $fDateFrom = $dtFrom.ToString("yyyy-MM-dd") }
+}
+if ($fDateTo -eq "") {
+    $dtTo    = [datetime]::Today
+    $fDateTo = $dtTo.ToString("yyyy-MM-dd")
 }
 
 # Apply filters

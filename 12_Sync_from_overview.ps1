@@ -1,7 +1,9 @@
 $w          = 55
 $border     = "=" * $w
 $rule       = "-" * $w
-$root       = "Z:\Proteomics\Projects"
+$_cfg       = if (Test-Path (Join-Path $PSScriptRoot "config.json")) { Get-Content (Join-Path $PSScriptRoot "config.json") -Raw | ConvertFrom-Json } else { $null }
+$_rootBase  = if ($_cfg -and $_cfg.Root) { $_cfg.Root } else { "Z:\Proteomics" }
+$root       = Join-Path $_rootBase "Projects"
 $prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history")
 
 Clear-Host

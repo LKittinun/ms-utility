@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mass Spectrometry Utility Suite - Project Section Manual</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 10.5pt;
+    color: #1a1a1a;
+    background: #fff;
+    padding: 0;
+  }
+
+  /* ── Page layout ── */
+  @page { size: A4; margin: 20mm 18mm 20mm 18mm; }
+  @media print {
+    .no-print { display: none; }
+    section { page-break-inside: avoid; }
+    h2 { page-break-before: always; }
+    h2.no-break { page-break-before: avoid; }
+  }
+
+  .page-wrap { max-width: 740px; margin: 0 auto; padding: 32px 24px; }
+
+  /* ── Cover ── */
+  .cover {
+    text-align: center;
+    padding: 60px 0 40px;
+    border-bottom: 3px solid #0078d4;
+    margin-bottom: 40px;
+  }
+  .cover h1 { font-size: 22pt; color: #0078d4; margin-bottom: 8px; }
+  .cover .subtitle { font-size: 13pt; color: #444; margin-bottom: 24px; }
+  .cover .meta { font-size: 9pt; color: #888; }
+
+  /* ── TOC ── */
+  .toc { background: #f4f8fc; border: 1px solid #c8dff0; border-radius: 6px; padding: 18px 24px; margin-bottom: 36px; }
+  .toc h3 { font-size: 10pt; text-transform: uppercase; letter-spacing: 0.06em; color: #0078d4; margin-bottom: 10px; }
+  .toc ol { margin-left: 20px; line-height: 2; }
+  .toc a { color: #0055a5; text-decoration: none; }
+
+  /* ── Section headings ── */
+  h2 {
+    font-size: 14pt;
+    color: #0078d4;
+    border-bottom: 2px solid #0078d4;
+    padding-bottom: 5px;
+    margin: 36px 0 16px;
+  }
+  h3 { font-size: 11pt; color: #005a9e; margin: 20px 0 8px; }
+  h4 { font-size: 10pt; color: #333; margin: 14px 0 6px; font-weight: 600; }
+
+  p { line-height: 1.65; margin-bottom: 10px; }
+  ul, ol { margin: 6px 0 10px 22px; line-height: 1.75; }
+  li { margin-bottom: 2px; }
+
+  /* ── Steps ── */
+  .steps { counter-reset: step; margin: 12px 0; }
+  .step {
+    counter-increment: step;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+  .step-num {
+    flex-shrink: 0;
+    width: 26px; height: 26px;
+    background: #0078d4;
+    color: #fff;
+    border-radius: 50%;
+    font-size: 9pt;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .step-body { flex: 1; padding-top: 3px; }
+  .step-body strong { display: block; margin-bottom: 2px; }
+
+  /* ── Key / field tags ── */
+  kbd {
+    background: #e8e8e8;
+    border: 1px solid #bbb;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-family: Consolas, monospace;
+    font-size: 9pt;
+  }
+  code {
+    background: #f0f0f0;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-family: Consolas, monospace;
+    font-size: 9pt;
+    color: #c7254e;
+  }
+
+  /* ── Info / tip boxes ── */
+  .box {
+    border-left: 4px solid;
+    border-radius: 0 4px 4px 0;
+    padding: 10px 14px;
+    margin: 14px 0;
+    font-size: 9.5pt;
+  }
+  .box.note   { border-color: #0078d4; background: #e8f2fc; }
+  .box.tip    { border-color: #107c10; background: #e8f5e8; }
+  .box.warn   { border-color: #d83b01; background: #fdf0eb; }
+  .box-label  { font-weight: 700; margin-bottom: 3px; }
+  .note .box-label  { color: #0055a5; }
+  .tip  .box-label  { color: #0a5e0a; }
+  .warn .box-label  { color: #a52a00; }
+
+  /* ── Folder tree ── */
+  .tree {
+    font-family: Consolas, monospace;
+    font-size: 9pt;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin: 12px 0;
+    line-height: 1.8;
+  }
+  .tree .dim  { color: #808080; }
+  .tree .hi   { color: #9cdcfe; }
+  .tree .grn  { color: #6a9955; }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 9.5pt; }
+  th { background: #0078d4; color: #fff; padding: 7px 10px; text-align: left; font-weight: 600; }
+  td { padding: 6px 10px; border-bottom: 1px solid #ddd; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f7f7; }
+
+  /* ── Terminal block ── */
+  .terminal {
+    background: #1e1e1e;
+    color: #ccc;
+    font-family: Consolas, monospace;
+    font-size: 9pt;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 10px 0;
+    line-height: 1.7;
+  }
+  .terminal .prompt { color: #569cd6; }
+  .terminal .out    { color: #9cdcfe; }
+  .terminal .dim    { color: #6a9955; }
+  .terminal .hi     { color: #dcdcaa; }
+
+  /* ── Divider ── */
+  hr { border: none; border-top: 1px solid #ddd; margin: 28px 0; }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+<!-- ═══════════════════ COVER ═══════════════════ -->
+<div class="cover">
+  <h1>Mass Spectrometry Utility Suite</h1>
+  <div class="subtitle">Project Section &mdash; User Manual</div>
+  <div class="meta">Scripts: [1] Project Folder Initializer &nbsp;|&nbsp; [2] Find Project &nbsp;|&nbsp; [3] Projects Overview</div>
+</div>
+
+<!-- ═══════════════════ TOC ═══════════════════ -->
+<div class="toc">
+  <h3>Contents</h3>
+  <ol>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#s01">Script [1] &mdash; Project Folder Initializer</a></li>
+    <li><a href="#s02">Script [2] &mdash; Find Project</a></li>
+    <li><a href="#s03">Script [3] &mdash; Projects Overview</a></li>
+    <li><a href="#structure">Folder &amp; File Structure Reference</a></li>
+  </ol>
+</div>
+
+<!-- ═══════════════════ OVERVIEW ═══════════════════ -->
+<h2 class="no-break" id="overview">1. Overview</h2>
+
+<p>The <strong>Project</strong> section of the Mass Spectrometry Utility Suite manages the lifecycle of proteomics projects — from creating the folder structure and recording metadata, to finding and reporting on existing projects.</p>
+
+<p>All project data lives under a single configurable root directory (default: <code>Z:\Proteomics</code>). Projects are organised by analytics column, then by project name, and each project carries a <code>project_info.json</code> metadata file and is logged in a per-column <code>column_log.csv</code>.</p>
+
+<h3>Folder hierarchy</h3>
+<div class="tree">
+<span class="hi">Z:\Proteomics\</span><br>
+&nbsp;&nbsp;<span class="dim">+--</span> Projects\<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">+--</span> <span class="hi">2026-03-01_C20533039\</span> &nbsp;&nbsp;<span class="grn">&lt;-- analytics column folder</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">|--</span> column_log.csv<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">|--</span> column_info.json<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">+--</span> <span class="hi">2026-03-09_MyProject\</span> &nbsp;<span class="grn">&lt;-- project folder</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">|--</span> project_info.json<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">+--</span> Plasma\<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">+--</span> Result\<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">+--</span> pEV\<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">+--</span> Result\
+</div>
+
+<div class="box note">
+  <div class="box-label">Note</div>
+  Both the column folder and the project folder are prefixed with the creation date (<code>YYYY-MM-DD_</code>) automatically. You never need to type the date prefix yourself.
+</div>
+
+<h3>Changing the root directory</h3>
+<p>If your proteomics data is not stored at <code>Z:\Proteomics</code>, open the main menu and navigate to <strong>Settings &rarr; Set root directory</strong>. Enter the new path and press <kbd>Enter</kbd>. The setting is saved and all scripts will use it from that point on.</p>
+
+<hr>
+
+<!-- ═══════════════════ SCRIPT 01 ═══════════════════ -->
+<h2 id="s01">2. Script [1] &mdash; Project Folder Initializer</h2>
+
+<p>Creates a new project's folder structure and records its metadata. Can also be used to <strong>update an existing project</strong> (add sample folders, change PI, etc.).</p>
+
+<h3>How to launch</h3>
+<p>Select <strong>[1] Project folder initializer</strong> from the main menu and press <kbd>Enter</kbd> to confirm <em>Run</em>.</p>
+
+<h3>Step-by-step walkthrough</h3>
+<div class="steps">
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <strong>Analytics Column ID</strong>
+      Type the column identifier exactly as printed on the column (e.g. <code>C20533039</code>).
+      <div class="box warn" style="margin-top:8px">
+        <div class="box-label">Important</div>
+        Do <em>not</em> include a date prefix. Enter only the column ID itself.
+      </div>
+      If the column already exists in the system, existing projects under it are listed and the script notes that the column is already known.
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <strong>Analytics Column Description</strong>
+      An arrow-key menu appears showing previously used descriptions from the library.
+      <ul>
+        <li><kbd>&uarr;</kbd> / <kbd>&darr;</kbd> &mdash; Navigate the list</li>
+        <li><kbd>Enter</kbd> &mdash; Select the highlighted description</li>
+        <li><kbd>Del</kbd> &mdash; Remove the highlighted entry from the library</li>
+        <li>Select <strong>[+ Add new description]</strong> to type and save a new one</li>
+      </ul>
+      Leave the new-description prompt blank to skip (description remains empty).
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <strong>New column details</strong> (first use of a column only)<br>
+      If the column has not been seen before, you are asked for:
+      <ul>
+        <li><strong>First use date</strong> &mdash; format <code>yyyy-MM-dd</code> (optional, press <kbd>Enter</kbd> to skip)</li>
+      </ul>
+      This information is saved to <code>column_info.json</code> inside the column folder and is not asked again for the same column.
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <strong>Project Name</strong>
+      Type the project name. No date prefix required &mdash; it is added automatically.
+      <ul>
+        <li>Spaces are converted to underscores</li>
+        <li>Characters invalid in folder names are removed</li>
+        <li>Reserved names (e.g. <em>blank</em>, <em>prtc</em>, <em>sst</em>) are rejected</li>
+      </ul>
+      If a project with this name already exists under the same column, the script switches to <strong>update mode</strong> (see below).
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <strong>PI Name</strong>
+      Enter the principal investigator's name. Leave blank to keep the current value (update mode) or leave unknown.
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">6</div>
+    <div class="step-body">
+      <strong>Trap Column ID</strong> (optional)
+      Type the trap column identifier. Leave blank if no trap column is used.
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">7</div>
+    <div class="step-body">
+      <strong>Trap Column Description</strong> (only if a trap column was entered)
+      Same arrow-key library menu as step 2, but for the trap column description library.
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">8</div>
+    <div class="step-body">
+      <strong>Sample Subfolders</strong>
+      Enter comma-separated subfolder names (e.g. <code>Plasma,pEV,CSF</code>).
+      <ul>
+        <li>In update mode, leave blank to keep existing subfolders</li>
+        <li>Type new names to <em>add</em> them (existing ones are preserved)</li>
+        <li>Duplicates and reserved names are rejected with a clear message</li>
+      </ul>
+      Each subfolder gets a <code>Result\</code> subdirectory inside it.
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">9</div>
+    <div class="step-body">
+      <strong>Preview &amp; Confirm</strong>
+      A summary tree of folders and metadata is shown. Use <kbd>&uarr;</kbd> / <kbd>&darr;</kbd> to select <em>Yes, create folders</em> or <em>No, cancel</em>, then press <kbd>Enter</kbd>.
+    </div>
+  </div>
+
+</div>
+
+<h3>Updating an existing project</h3>
+<p>If you type a project name that already exists under the selected column, the script detects it automatically and shows:</p>
+<div class="terminal">
+  <span class="out">  Existing project found - leave fields blank to keep current values.</span>
+</div>
+<p>Each field prompt shows the current value in grey. Press <kbd>Enter</kbd> to keep it, or type a new value to overwrite. The <strong>Project ID</strong> and <strong>project number</strong> are always preserved from the original record. The CSV log row is updated in-place.</p>
+
+<h3>What the script creates</h3>
+<table>
+  <tr><th>Item</th><th>Location</th><th>Description</th></tr>
+  <tr><td>Project folder</td><td><code>Projects\&lt;date_ColID&gt;\&lt;date_ProjectName&gt;\</code></td><td>Top-level project directory</td></tr>
+  <tr><td>Sample subfolders</td><td>Inside the project folder</td><td>One per sample type, each with a <code>Result\</code> sub-folder</td></tr>
+  <tr><td><code>project_info.json</code></td><td>Project folder root</td><td>Full project metadata (see field reference below)</td></tr>
+  <tr><td><code>column_info.json</code></td><td>Column folder root</td><td>Column metadata; created once per column</td></tr>
+  <tr><td><code>column_log.csv</code></td><td>Column folder root</td><td>One row per project; appended or updated in-place</td></tr>
+</table>
+
+<h3>project_info.json field reference</h3>
+<table>
+  <tr><th>Field</th><th>Description</th></tr>
+  <tr><td><code>ProjectID</code></td><td>Random 8-character alphanumeric identifier, generated once</td></tr>
+  <tr><td><code>Project</code></td><td>Project name as entered (no date prefix)</td></tr>
+  <tr><td><code>PI</code></td><td>Principal investigator name</td></tr>
+  <tr><td><code>AnalyticsColumn</code></td><td>Analytics column ID</td></tr>
+  <tr><td><code>ColumnDescription</code></td><td>Analytics column description from the library</td></tr>
+  <tr><td><code>TrapColumn</code></td><td>Trap column ID (null if not used)</td></tr>
+  <tr><td><code>TrapColumnDescription</code></td><td>Trap column description (null if not used)</td></tr>
+  <tr><td><code>ProjectNo</code></td><td>Sequential project number within this column</td></tr>
+  <tr><td><code>Created</code></td><td>Creation timestamp (<code>yyyy-MM-dd HH:mm</code>)</td></tr>
+  <tr><td><code>SampleFolders</code></td><td>Array of all sample subfolder names</td></tr>
+</table>
+
+<div class="box tip">
+  <div class="box-label">Tip &mdash; Reserved folder names</div>
+  The following names cannot be used for project names or sample subfolders: <code>blank</code>, <code>raw_summary</code>, <code>prtc</code>, <code>sst</code>, <code>column_usage_history</code>. These are reserved for internal use.
+</div>
+
+<hr>
+
+<!-- ═══════════════════ SCRIPT 02 ═══════════════════ -->
+<h2 id="s02">3. Script [2] &mdash; Find Project</h2>
+
+<p>Searches all projects in the system and displays matching results. Supports searching by multiple fields and opening a project folder directly in Windows Explorer.</p>
+
+<h3>How to launch</h3>
+<p>Select <strong>[2] Find project</strong> from the main menu.</p>
+
+<h3>Searching</h3>
+<p>At the <code>Search</code> prompt, type one or more terms separated by commas or semicolons. The search is case-insensitive and partial matches are supported.</p>
+
+<p><strong>Searchable fields:</strong></p>
+<ul>
+  <li>Analytics column ID (e.g. <code>C20533039</code>)</li>
+  <li>Project name</li>
+  <li>PI name</li>
+  <li>Project ID (the 8-character code)</li>
+  <li>Trap column ID</li>
+</ul>
+
+<p><strong>Examples:</strong></p>
+<table>
+  <tr><th>Input</th><th>Finds</th></tr>
+  <tr><td><code>C20533039</code></td><td>All projects on column C20533039</td></tr>
+  <tr><td><code>Smith</code></td><td>All projects where PI name contains "Smith"</td></tr>
+  <tr><td><code>Plasma</code></td><td>All projects named with "Plasma"</td></tr>
+  <tr><td><code>C20533039, Smith</code></td><td>Projects matching <em>either</em> term (OR logic)</td></tr>
+</table>
+
+<p>Press <kbd>Enter</kbd> with a blank input to return to the main menu.</p>
+
+<h3>Results &amp; navigation</h3>
+<p>Matching projects are listed with their ID, name, PI, column, and full folder path. After results are shown, a navigation menu appears:</p>
+
+<table>
+  <tr><th>Option</th><th>Action</th></tr>
+  <tr><td>Open in Explorer</td><td>Opens the project folder in Windows Explorer. If multiple results were found, a picker lets you choose which one to open.</td></tr>
+  <tr><td>New search</td><td>Clears the screen and prompts for a new search term</td></tr>
+  <tr><td>Back to main menu</td><td>Returns to the main menu</td></tr>
+  <tr><td>Exit</td><td>Closes the script</td></tr>
+</table>
+
+<div class="box tip">
+  <div class="box-label">Tip</div>
+  If the path shown in the results looks wrong, use <strong>Settings &rarr; Set root directory</strong> in the main menu to update the root path.
+</div>
+
+<hr>
+
+<!-- ═══════════════════ SCRIPT 03 ═══════════════════ -->
+<h2 id="s03">4. Script [3] &mdash; Projects Overview</h2>
+
+<p>Scans all projects in the system, applies optional filters, displays a summary grouped by column, and exports the results to an Excel file.</p>
+
+<h3>How to launch</h3>
+<p>Select <strong>[3] Projects overview</strong> from the main menu and confirm <em>Run</em>.</p>
+
+<div class="box note">
+  <div class="box-label">First run</div>
+  On the first run (or if the <strong>ImportExcel</strong> PowerShell module is not installed), the script installs it automatically. This requires an internet connection and may take a moment.
+</div>
+
+<h3>Filters</h3>
+<p>After scanning, you are prompted for optional filters. Leave any field blank to use the default (all records).</p>
+
+<table>
+  <tr><th>Filter</th><th>Format</th><th>Blank default</th></tr>
+  <tr><td>Date from</td><td><code>yyyy-MM-dd</code></td><td>Oldest project creation date in the system</td></tr>
+  <tr><td>Date to</td><td><code>yyyy-MM-dd</code></td><td>Today's date</td></tr>
+  <tr><td>PI</td><td>Partial name, case-insensitive</td><td>All PIs</td></tr>
+  <tr><td>Column description</td><td>Arrow-key selection from library, or <kbd>Esc</kbd> to skip</td><td>All columns</td></tr>
+</table>
+
+<p>The active filter range is always shown before the results, so you can confirm what date window is in use.</p>
+
+<h3>Console summary</h3>
+<p>Results are grouped by analytics column and displayed in the terminal:</p>
+<div class="terminal">
+  <span class="dim">  -------------------------------------------------------</span><br>
+  <span class="out">  Column: C20533039  (3 project(s))</span><br>
+  &nbsp;&nbsp;#01&nbsp;&nbsp;A8X3K2PL&nbsp;&nbsp;Plasma_proteomics&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Smith<br>
+  &nbsp;&nbsp;#02&nbsp;&nbsp;B7R9W1QM&nbsp;&nbsp;pEV_characterization&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Lee<br>
+  &nbsp;&nbsp;#03&nbsp;&nbsp;C4N2V6YT&nbsp;&nbsp;CSF_cohort&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Zhang
+</div>
+
+<h3>Export</h3>
+<p>The filtered results are automatically exported to an Excel file (<code>.xlsx</code>) in the <code>Projects</code> folder, named with a timestamp:</p>
+<div class="terminal">
+  <span class="out">  Excel : Z:\Proteomics\Projects\Projects_overview_20260309_143022.xlsx</span>
+</div>
+
+<p>The Excel file includes auto-filter headers, frozen top row, and the following columns:</p>
+<table>
+  <tr><th>Column</th><th>Description</th></tr>
+  <tr><td>Column</td><td>Analytics column ID</td></tr>
+  <tr><td>ColumnDescription</td><td>Column description from library</td></tr>
+  <tr><td>ProjectNo</td><td>Sequential project number (zero-padded)</td></tr>
+  <tr><td>ProjectID</td><td>Unique 8-character project identifier</td></tr>
+  <tr><td>Project</td><td>Project name</td></tr>
+  <tr><td>PI</td><td>Principal investigator</td></tr>
+  <tr><td>TrapColumn</td><td>Trap column ID</td></tr>
+  <tr><td>TrapColumnDescription</td><td>Trap column description</td></tr>
+  <tr><td>Created</td><td>Project creation timestamp</td></tr>
+  <tr><td>SampleCount</td><td>Number of sample subfolders</td></tr>
+  <tr><td>SampleFolders</td><td>Sample subfolder names (semicolon-separated)</td></tr>
+</table>
+
+<p>After export, select <strong>Open file</strong> in the navigation menu to open the Excel file immediately.</p>
+
+<hr>
+
+<!-- ═══════════════════ STRUCTURE REFERENCE ═══════════════════ -->
+<h2 id="structure">5. Folder &amp; File Structure Reference</h2>
+
+<table>
+  <tr><th>Path</th><th>Created by</th><th>Purpose</th></tr>
+  <tr>
+    <td><code>Projects\&lt;date_ColID&gt;\</code></td>
+    <td>Script [1]</td>
+    <td>One folder per analytics column; named with date of first use and column ID</td>
+  </tr>
+  <tr>
+    <td><code>...\column_info.json</code></td>
+    <td>Script [1]</td>
+    <td>Column metadata: ID, description, first use date</td>
+  </tr>
+  <tr>
+    <td><code>...\column_log.csv</code></td>
+    <td>Script [1]</td>
+    <td>One row per project on this column; updated each time script [1] runs</td>
+  </tr>
+  <tr>
+    <td><code>...\&lt;date_ProjectName&gt;\</code></td>
+    <td>Script [1]</td>
+    <td>One folder per project; date-prefixed at creation</td>
+  </tr>
+  <tr>
+    <td><code>...\project_info.json</code></td>
+    <td>Script [1]</td>
+    <td>Full project metadata; source of truth for scripts [2] and [3]</td>
+  </tr>
+  <tr>
+    <td><code>...\&lt;SampleFolder&gt;\Result\</code></td>
+    <td>Script [1]</td>
+    <td>Per-sample result directory for DIA-NN output and reports</td>
+  </tr>
+  <tr>
+    <td><code>Projects\Projects_overview_*.xlsx</code></td>
+    <td>Script [3]</td>
+    <td>Filtered project export; timestamped filename</td>
+  </tr>
+</table>
+
+<div style="margin-top:40px; padding-top:16px; border-top:1px solid #ddd; font-size:8.5pt; color:#888; text-align:center;">
+  Mass Spectrometry Utility Suite &mdash; Project Section Manual &mdash; Generated 2026-03-09
+</div>
+
+</div><!-- /page-wrap -->
+</body>
+</html>
