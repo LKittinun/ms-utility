@@ -2,6 +2,13 @@
 
 A collection of PowerShell scripts for managing LC-MS/MS proteomics projects, column logs, DIA-NN metrics, and service reports.
 
+## Documentation
+
+A user manual covering scripts 01-03 (Project section) is available:
+
+- [`manual_project.html`](manual_project.html) - HTML version
+- [`manual_project.pdf`](manual_project.pdf) - PDF version
+
 ## Requirements
 
 - Windows PowerShell 5.1+
