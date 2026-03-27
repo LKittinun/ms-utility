@@ -4,7 +4,7 @@ $rule   = "-" * $w
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
-Write-Host "   [6]  Service report                (Excel)" -ForegroundColor Cyan
+Write-Host "   [6]  Analysis report               (Excel)" -ForegroundColor Cyan
 Write-Host "        Analysis_Report.xlsx  (5 sheets)" -ForegroundColor DarkCyan
 Write-Host "        Project Overview  |  Raw Files  |  Run Statistics" -ForegroundColor DarkCyan
 Write-Host "        Summary Statistics  |  Protein Groups (pg_matrix)" -ForegroundColor DarkCyan

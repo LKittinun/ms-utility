@@ -1,6 +1,6 @@
 # Mass Spectrometry Utility Suite
 
-A collection of PowerShell scripts for managing LC-MS/MS proteomics projects, column logs, DIA-NN metrics, and service reports.
+A collection of PowerShell scripts for managing LC-MS/MS proteomics projects, column logs, DIA-NN metrics, and analysis reports for academic core facility use.
 
 ## Documentation
 
@@ -37,7 +37,7 @@ Navigate with Up/Down arrows and Enter. The root directory is shown in the foote
 | 03 | `03_Projects_overview.ps1` | Project | Filter all projects and export to Excel or CSV |
 | 04 | `04_Column_usage.ps1` | Analysis | Column usage report across projects |
 | 05 | `05_DIANN_metrics.ps1` | Analysis | DIA-NN metrics plots and TSV export |
-| 06 | `06_Report_generator.ps1` | Analysis | Generate service report Excel workbook per sample |
+| 06 | `06_Report_generator.ps1` | Analysis | Generate analysis report Excel workbook per sample |
 | 07 | `07_Bulk_msConvert.ps1` | Miscellaneous | Bulk convert `.raw` files to mzML |
 | 08 | `08_Contaminant_check.ps1` | Miscellaneous | Contaminant screening via mzsniffer |
 | 09 | `09_Clear_files.ps1` | Miscellaneous | Delete `.sld` and `.meth` files |

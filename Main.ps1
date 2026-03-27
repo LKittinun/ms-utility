@@ -14,7 +14,7 @@ $entries = @(
     @{ Type = "sep";  Label = "  Analysis"                                                                            }
     @{ Type = "item"; Label = "[4]  Column usage report";          Script = ".\04_Column_usage.ps1";             Color = "White"     }
     @{ Type = "item"; Label = "[5]  DIA-NN metrics                (plots + TSV)"; Script = ".\05_DIANN_metrics.ps1";    Color = "White" }
-    @{ Type = "item"; Label = "[6]  Service report                (Excel)";       Script = ".\06_Report_generator.ps1"; Color = "White" }
+    @{ Type = "item"; Label = "[6]  Analysis report               (Excel)";       Script = ".\06_Report_generator.ps1"; Color = "White" }
     @{ Type = "sep";  Label = "  Miscellaneous"                                                                       }
     @{ Type = "item"; Label = "[7]  Bulk convert .raw to mzML     (msConvert)"; Script = ".\07_Bulk_msConvert.ps1";    Color = "White" }
     @{ Type = "item"; Label = "[8]  Contaminant check             (mzsniffer)"; Script = ".\08_Contaminant_check.ps1"; Color = "White" }

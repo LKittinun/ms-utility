@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # =============================================================================
-# Proteomics Service Report Generator  - DIA-NN Output
+# Proteomics Core Facility Report Generator  - DIA-NN Output
 # =============================================================================
 # Generates one Excel file from a DIA-NN project folder:
 #
@@ -513,7 +513,7 @@ build_report <- function(project_dir, result_dir, out_path) {
   disclaimer <- paste0(
     "Report generated automatically by the Proteomics Core Facility. ",
     "For questions, reanalysis requests, or additional statistical support, ",
-    "please contact your service representative."
+    "please contact your core facility staff."
   )
   writeData(wb, "Project Overview", disclaimer, startRow = r, startCol = 1)
   addStyle(wb, "Project Overview",
@@ -618,7 +618,7 @@ build_report <- function(project_dir, result_dir, out_path) {
     raw_note_row <- end_r2 + 3
     writeData(wb, "Raw Files",
               paste0("\u2139  Raw data files (.raw) are not included in the standard delivery. ",
-                     "Please contact your service representative if you require access to the original raw files."),
+                     "Please contact your core facility staff if you require access to the original raw files."),
               startRow = raw_note_row, startCol = 1)
     addStyle(wb, "Raw Files",
              createStyle(fontColour = "#595959", textDecoration = "italic",
