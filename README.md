@@ -16,7 +16,7 @@ A user manual covering the Project section scripts (01-03) is available:
 - [ImportExcel](https://github.com/dfinke/ImportExcel) module (auto-installed on first use by scripts that need it)
 - R 4.0+ (required packages are installed automatically on first run)
 - [msConvert](https://proteowizard.sourceforge.io/) on PATH (for script 07)
-- [mzsniffer](https://github.com/LewisResearchGroup/mzsniffer) (for script 08)
+- [mzsniffer](https://github.com/wfondrie/mzsniffer) (for script 08)
 
 ## Usage
 
