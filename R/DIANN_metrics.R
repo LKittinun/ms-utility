@@ -1,9 +1,15 @@
 # --- Package bootstrap --------------------------------------------------------
-for (pkg in c("diann", "tidyverse", "GGally", "viridis", "gghighlight", "ggridges", "cowplot")) {
+for (pkg in c("tidyverse", "GGally", "viridis", "gghighlight", "ggridges", "cowplot")) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
     message(sprintf("Installing missing package: %s", pkg))
     install.packages(pkg, repos = "https://cloud.r-project.org", quiet = TRUE)
   }
+}
+if (!requireNamespace("diann", quietly = TRUE)) {
+  message("Installing missing package: diann")
+  if (!requireNamespace("remotes", quietly = TRUE))
+    install.packages("remotes", repos = "https://cloud.r-project.org", quiet = TRUE)
+  remotes::install_github("vdemichev/diann-rpackage", quiet = TRUE)
 }
 if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
   message("Installing missing package: ComplexHeatmap")
