@@ -10,3 +10,11 @@ data/
 # Dev/internal notes
 NOTES.md
 CLAUDE.md
+
+# Dev/exploratory R scripts
+R/Raw.R
+R/Raw_files_processing.R
+R/meth.r
+
+# Local lab directories
+Kittinun/
