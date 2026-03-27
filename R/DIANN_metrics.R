@@ -1,3 +1,17 @@
+# --- Package bootstrap --------------------------------------------------------
+for (pkg in c("diann", "tidyverse", "GGally", "viridis", "gghighlight", "ggridges", "cowplot")) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    message(sprintf("Installing missing package: %s", pkg))
+    install.packages(pkg, repos = "https://cloud.r-project.org", quiet = TRUE)
+  }
+}
+if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
+  message("Installing missing package: ComplexHeatmap")
+  if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager", repos = "https://cloud.r-project.org", quiet = TRUE)
+  BiocManager::install("ComplexHeatmap", ask = FALSE, quiet = TRUE)
+}
+
 suppressPackageStartupMessages({
 library(diann, quietly = T)
 library(tidyverse, quietly = T)

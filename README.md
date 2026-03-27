@@ -14,11 +14,7 @@ A user manual covering the Project section scripts (01-03) is available:
 - Windows PowerShell 5.1+
 - Network access to the proteomics data root (default: `Z:\Proteomics`)
 - [ImportExcel](https://github.com/dfinke/ImportExcel) module (auto-installed on first use by scripts that need it)
-- R 4.0+ with the following packages:
-  - **Script 05** (DIA-NN metrics): `diann`, `tidyverse`, `GGally`, `viridis`, `gghighlight`, `ggridges`, `cowplot`, `ComplexHeatmap` (Bioconductor)
-  - **Script 06** (report generation): `openxlsx`
-  - Install CRAN packages: `install.packages(c("openxlsx", "diann", "tidyverse", "GGally", "viridis", "gghighlight", "ggridges", "cowplot"))`
-  - Install Bioconductor package: `BiocManager::install("ComplexHeatmap")`
+- R 4.0+ (required packages are installed automatically on first run)
 - [msConvert](https://proteowizard.sourceforge.io/) on PATH (for script 07)
 - [mzsniffer](https://github.com/LewisResearchGroup/mzsniffer) (for script 08)
 
