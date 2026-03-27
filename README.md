@@ -12,7 +12,7 @@ A user manual covering the Project section scripts (01-03) is available:
 ## Requirements
 
 - Windows PowerShell 5.1+
-- Network access to the proteomics data root (default: `Z:\Proteomics`)
+- Access to a data root directory (default: `Z:\Proteomics`, configurable)
 - [ImportExcel](https://github.com/dfinke/ImportExcel) module (auto-installed on first use by scripts that need it)
 - R 4.0+ (required packages are installed automatically on first run)
 - [msConvert](https://proteowizard.sourceforge.io/) on PATH (for script 07)
