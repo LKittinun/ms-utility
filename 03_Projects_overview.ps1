@@ -131,38 +131,39 @@ Write-Host ""
 # -- Column library picker ----------------------------------------------------
 $fColumn = ""
 if ($colLib.Count -gt 0) {
-    Write-Host "  Column description  (Enter = select   Esc = no filter):" -ForegroundColor Cyan
+    Write-Host "  Column description:" -ForegroundColor Cyan
     Write-Host ""
 
+    $cLibItems = @("[ No filter ]") + $colLib
     $cLibSel = 0
     $cLibTop = [Console]::CursorTop
 
-    for ($i = 0; $i -lt $colLib.Count; $i++) {
+    for ($i = 0; $i -lt $cLibItems.Count; $i++) {
         [Console]::SetCursorPosition(0, $cLibTop + $i)
-        $text = ("    " + $colLib[$i]).PadRight($w + 4)
+        $text = ("    " + $cLibItems[$i]).PadRight($w + 4)
         if ($i -eq $cLibSel) { Write-Host $text -ForegroundColor Black -BackgroundColor Cyan -NoNewline }
+        elseif ($i -eq 0)    { Write-Host $text -ForegroundColor DarkCyan -NoNewline }
         else                  { Write-Host $text -ForegroundColor White -NoNewline }
     }
-    [Console]::SetCursorPosition(0, $cLibTop + $colLib.Count)
+    [Console]::SetCursorPosition(0, $cLibTop + $cLibItems.Count)
 
     :colLibLoop while ($true) {
         $ck = [Console]::ReadKey($true)
         if ($ck.Key -eq [ConsoleKey]::UpArrow -or $ck.Key -eq [ConsoleKey]::DownArrow) {
             $prev    = $cLibSel
             $cLibSel = if ($ck.Key -eq [ConsoleKey]::UpArrow) {
-                           ($cLibSel - 1 + $colLib.Count) % $colLib.Count
+                           ($cLibSel - 1 + $cLibItems.Count) % $cLibItems.Count
                        } else {
-                           ($cLibSel + 1) % $colLib.Count
+                           ($cLibSel + 1) % $cLibItems.Count
                        }
             [Console]::SetCursorPosition(0, $cLibTop + $prev)
-            Write-Host ("    " + $colLib[$prev]).PadRight($w + 4) -ForegroundColor White -NoNewline
+            $prevFg = if ($prev -eq 0) { "DarkCyan" } else { "White" }
+            Write-Host ("    " + $cLibItems[$prev]).PadRight($w + 4) -ForegroundColor $prevFg -NoNewline
             [Console]::SetCursorPosition(0, $cLibTop + $cLibSel)
-            Write-Host ("    " + $colLib[$cLibSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-            [Console]::SetCursorPosition(0, $cLibTop + $colLib.Count)
+            Write-Host ("    " + $cLibItems[$cLibSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
+            [Console]::SetCursorPosition(0, $cLibTop + $cLibItems.Count)
         } elseif ($ck.Key -eq [ConsoleKey]::Enter) {
-            $fColumn = $colLib[$cLibSel]
-            break colLibLoop
-        } elseif ($ck.Key -eq [ConsoleKey]::Escape) {
+            if ($cLibSel -gt 0) { $fColumn = $cLibItems[$cLibSel] }
             break colLibLoop
         }
     }
