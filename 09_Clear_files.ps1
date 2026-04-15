@@ -36,7 +36,7 @@ Write-Host ""
 
 $path = Read-Host "Insert directory, leave blank for a current location"
 if ($path -eq "") { $path = (Get-Location).Path }
-$files = Get-ChildItem -Path "$path\*" -Recurse -Include *.sld, *.meth -File
+$files = Get-ChildItem -Path $path -Recurse -Include "*.sld", "*.meth" -File
 
 if ($files.Count -eq 0) {
     Write-Host "  No *sld and *meth files found" -ForegroundColor Yellow
@@ -46,7 +46,8 @@ if ($files.Count -eq 0) {
     Write-Host ""
     $confirm = Read-Host "  Confirm removal? y = yes"
     if ($confirm -eq "y") {
-        Remove-Item $files
+        $safeFiles = @($files | Where-Object { $_.Extension -ine ".raw" })
+        Remove-Item $safeFiles
         Write-Host "  All files removed." -ForegroundColor Green
     } else {
         Write-Host "  Cancelled." -ForegroundColor DarkYellow
