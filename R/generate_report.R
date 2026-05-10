@@ -110,14 +110,12 @@ collect_raw_files <- function(project_dir) {
   if (length(files) == 0) return(data.frame())
 
   rows <- lapply(sort(files), function(f) {
-    st    <- file.info(f)
-    quant <- paste0(f, ".quant")
+    st <- file.info(f)
     data.frame(
-      `File Name`       = basename(f),
-      `Size (MB)`       = round(st$size / 1024^2, 2),
-      `Size (GB)`       = round(st$size / 1024^3, 3),
-      `Modified`        = format(st$mtime, "%Y-%m-%d %H:%M"),
-      `Has .quant File` = ifelse(file.exists(quant), "Yes", "No"),
+      `File Name` = basename(f),
+      `Size (MB)` = round(st$size / 1024^2, 2),
+      `Size (GB)` = round(st$size / 1024^3, 3),
+      `Created`   = format(st$ctime, "%Y-%m-%d %H:%M"),
       check.names = FALSE, stringsAsFactors = FALSE
     )
   })
@@ -128,20 +126,14 @@ parse_log <- function(log_path) {
   info <- list(
     # --- System ----------------------------------------------------------
     "DIA-NN Version"                = "n/a",
-    "Compile Date"                  = "n/a",
-    "Analysis Date"                 = "n/a",
-    "CPU"                           = "n/a",
-    "Threads"                       = "n/a",
     # --- Analysis settings -----------------------------------------------
     "FDR Threshold (q-value)"       = "n/a",
     "Quantification Method"         = "n/a",
     "Match-Between-Runs (MBR)"      = "n/a",
-    "Reuse Existing .quant Files"   = "n/a",
     "Output Matrices"               = "n/a",
     "Generate Spectral Library"     = "n/a",
     # --- Library / database ----------------------------------------------
     "Spectral Library"              = "n/a",
-    "Output Library"                = "n/a",
     "FASTA Database(s)"             = "n/a",
     "Contaminant Exclusion Tag"     = "n/a",
     # --- Peptide settings ------------------------------------------------
@@ -172,27 +164,18 @@ parse_log <- function(log_path) {
 
   ver_str <- rx("DIA-NN\\s+([\\d.]+[^\\r\\n]*?)\\n")
   info[["DIA-NN Version"]]             <- ver_str
-  info[["Compile Date"]]               <- rx("Compiled on (.+?)\\n")
-  info[["Analysis Date"]]              <- rx("Current date and time:\\s*(.+?)\\n")
-  info[["CPU"]]                        <- rx("CPU:\\s+(.+?)\\n")
-  info[["Threads"]]                    <- rx("--threads\\s+(\\d+)")
 
   info[["FDR Threshold (q-value)"]]    <- rx("--qvalue\\s+([\\d.]+)")
   major_ver <- suppressWarnings(as.integer(sub("^(\\d+)\\..*", "\\1", ver_str)))
   info[["Quantification Method"]]      <- if (!is.na(major_ver) && major_ver >= 2)
                                             "QuantUMS (DIA-NN 2.x default)" else "MaxLFQ"
   info[["Match-Between-Runs (MBR)"]]   <- ifelse(grepl("--reanalyse",    text), "Yes", "No")
-  info[["Reuse Existing .quant Files"]]<- ifelse(grepl("--use-quant",    text), "Yes", "No")
   info[["Output Matrices"]]            <- ifelse(grepl("--matrices",     text), "Yes", "No")
   info[["Generate Spectral Library"]]  <- ifelse(grepl("--gen-spec-lib", text), "Yes", "No")
 
   m_lib <- regmatches(text, regexpr("--lib\\s+(\\S+)", text, perl = TRUE))
   if (length(m_lib) > 0)
     info[["Spectral Library"]] <- basename(sub("--lib\\s+(\\S+)", "\\1", m_lib, perl = TRUE))
-
-  m_outlib <- regmatches(text, regexpr("--out-lib\\s+(\\S+)", text, perl = TRUE))
-  if (length(m_outlib) > 0)
-    info[["Output Library"]] <- basename(sub("--out-lib\\s+(\\S+)", "\\1", m_outlib, perl = TRUE))
 
   fastas <- unlist(regmatches(text, gregexpr("(?<=--fasta\\s)\\S+", text, perl = TRUE)))
   if (length(fastas) > 0)
@@ -551,7 +534,7 @@ build_report <- function(project_dir, result_dir, out_path) {
       "Functional description of the leading (highest-confidence) protein in the group.",
       "Total number of peptide sequences identified and used for quantification of this protein group.",
       "Number of proteotypic (peptides unique to this protein, not shared with any other) sequences - a measure of identification confidence.",
-      "QuantUMS protein intensity for each sample (column header = sample name). Zero or blank = not detected; treat as NA or apply imputation."
+      "QuantUMS protein intensity for each sample (column header = sample name). Blank = not detected; treat as NA or apply imputation."
     ),
     stringsAsFactors = FALSE, check.names = FALSE
   )
@@ -602,18 +585,16 @@ build_report <- function(project_dir, result_dir, out_path) {
                             bytes_to_human(mean(raw_df$`Size (MB)`) * 1024^2)))
     end_r2 <- write_table(wb, "Raw Files", raw_df, start_row = r2)
 
-    quant_ok <- sum(raw_df$`Has .quant File` == "Yes")
     writeData(wb, "Raw Files",
               data.frame(
                 A = "TOTAL",
                 B = sprintf("%.2f MB  (%s)", total_mb, bytes_to_human(total_mb * 1024^2)),
-                C = "", D = "",
-                E = sprintf("%d / %d paired .quant files", quant_ok, nrow(raw_df))
+                C = "", D = ""
               ),
               startRow = end_r2 + 1, startCol = 1, colNames = FALSE)
     addStyle(wb, "Raw Files",
              createStyle(textDecoration = "bold"),
-             rows = end_r2 + 1, cols = 1:5, gridExpand = TRUE, stack = TRUE)
+             rows = end_r2 + 1, cols = 1:4, gridExpand = TRUE, stack = TRUE)
 
     raw_note_row <- end_r2 + 3
     writeData(wb, "Raw Files",
@@ -623,14 +604,14 @@ build_report <- function(project_dir, result_dir, out_path) {
     addStyle(wb, "Raw Files",
              createStyle(fontColour = "#595959", textDecoration = "italic",
                          wrapText = TRUE, fontSize = 9),
-             rows = raw_note_row, cols = 1:5, gridExpand = TRUE, stack = TRUE)
-    mergeCells(wb, "Raw Files", cols = 1:5, rows = raw_note_row)
+             rows = raw_note_row, cols = 1:4, gridExpand = TRUE, stack = TRUE)
+    mergeCells(wb, "Raw Files", cols = 1:4, rows = raw_note_row)
     setRowHeights(wb, "Raw Files", rows = raw_note_row, heights = 28)
   } else {
     writeData(wb, "Raw Files", "No raw files found in project directory.",
               startRow = 1, startCol = 1)
   }
-  setColWidths(wb, "Raw Files", cols = 1:5, widths = c(30, 12, 10, 18, 20))
+  setColWidths(wb, "Raw Files", cols = 1:4, widths = c(30, 12, 10, 18))
 
   # -- Sheet: Run Statistics ---------------------------------------------------
   cat("  * Per-sample run statistics\n")
@@ -682,6 +663,7 @@ build_report <- function(project_dir, result_dir, out_path) {
   pg_path <- find_pg_matrix(result_dir)
   if (!is.null(pg_path)) {
     pg_raw <- read.delim(pg_path, stringsAsFactors = FALSE, check.names = FALSE)
+
     writeData(wb, "Summary Statistics",
               "Protein Group Matrix Overview", startRow = r4, startCol = 1)
     addStyle(wb, "Summary Statistics",
@@ -689,8 +671,201 @@ build_report <- function(project_dir, result_dir, out_path) {
                          textDecoration = "bold"),
              rows = r4, cols = 1, stack = TRUE)
     r4 <- r4 + 1
-    write_table(wb, "Summary Statistics", pg_overview(pg_raw),
-                start_row = r4, hdr_bg = CLR_MID_BLUE)
+    r4 <- write_table(wb, "Summary Statistics", pg_overview(pg_raw),
+                      start_row = r4, hdr_bg = CLR_MID_BLUE) + 1
+
+    # -- QC Sample Metrics ------------------------------------------------------
+    # Find sample columns whose names contain "qc" (case-insensitive)
+    sc_all  <- get_sample_cols(pg_raw)
+    qc_cols <- grep("qc", sc_all, ignore.case = TRUE, value = TRUE)
+    n_qc    <- length(qc_cols)
+
+    if (n_qc >= 2) {
+      shorten_name <- function(n) {
+        if (grepl("[/\\\\]", n)) tools::file_path_sans_ext(basename(n)) else n
+      }
+      qc_short      <- sapply(qc_cols, shorten_name, USE.NAMES = FALSE)
+      qc_groups     <- sub("[_-]\\d+$", "", qc_short)
+      unique_groups <- unique(qc_groups)
+      n_groups      <- length(unique_groups)
+      grp_palette   <- c("#2E75B6", "#C00000", "#70AD47", "#ED7D31", "#7030A0")
+
+      writeData(wb, "Summary Statistics",
+                "QC Sample Metrics", startRow = r4, startCol = 1)
+      addStyle(wb, "Summary Statistics",
+               createStyle(fgFill = CLR_SECTION, fontColour = CLR_MID_BLUE,
+                           textDecoration = "bold"),
+               rows = r4, cols = 1, stack = TRUE)
+      r4 <- r4 + 1
+
+      # Warning: any group with fewer than 3 replicates
+      small_groups <- unique_groups[
+        sapply(unique_groups, function(g) sum(qc_groups == g) < 3)
+      ]
+      if (length(small_groups) > 0) {
+        writeData(wb, "Summary Statistics",
+                  paste0("\u26A0  Warning: fewer than 3 replicates in group(s): ",
+                         paste(small_groups, collapse = ", "),
+                         ". CV% requires >= 3 replicates for reliable interpretation."),
+                  startRow = r4, startCol = 1)
+        addStyle(wb, "Summary Statistics",
+                 createStyle(fontColour = "#9C5700", fgFill = CLR_WARN,
+                             textDecoration = "italic", fontSize = 10, wrapText = TRUE),
+                 rows = r4, cols = 1:2, gridExpand = TRUE, stack = TRUE)
+        mergeCells(wb, "Summary Statistics", cols = 1:2, rows = r4)
+        setRowHeights(wb, "Summary Statistics", rows = r4, heights = 28)
+        r4 <- r4 + 2
+      }
+
+      qc_table_row    <- r4   # anchor for image alignment
+      first_grp_end   <- NULL
+      group_data      <- list()
+
+      for (gi in seq_along(unique_groups)) {
+        grp      <- unique_groups[gi]
+        grp_idx  <- which(qc_groups == grp)
+        grp_cols <- qc_cols[grp_idx]
+        grp_mat  <- as.matrix(pg_raw[, grp_cols, drop = FALSE])
+        grp_mat[grp_mat == 0] <- NA
+
+        per_samp <- colSums(!is.na(grp_mat))
+        in_all   <- sum(rowSums(!is.na(grp_mat)) == length(grp_cols))
+        cv_prot  <- apply(grp_mat, 1, function(x) {
+          x <- x[!is.na(x)]
+          if (length(x) < 2 || mean(x) == 0) return(NA_real_)
+          sd(x) / mean(x) * 100
+        })
+        med_cv <- round(median(cv_prot, na.rm = TRUE), 2)
+        grp_color <- grp_palette[((gi - 1L) %% length(grp_palette)) + 1L]
+
+        group_data[[grp]] <- list(
+          mat    = grp_mat,
+          short  = qc_short[grp_idx],
+          cv     = cv_prot,
+          med_cv = med_cv,
+          color  = grp_color
+        )
+
+        # Sub-header
+        writeData(wb, "Summary Statistics", grp, startRow = r4, startCol = 1)
+        addStyle(wb, "Summary Statistics",
+                 createStyle(textDecoration = "bold", fontColour = CLR_DARK_BLUE,
+                             fgFill = CLR_LIGHT_BLUE),
+                 rows = r4, cols = 1:2, gridExpand = TRUE, stack = TRUE)
+        r4 <- r4 + 1
+
+        grp_summ <- data.frame(
+          Metric = c(
+            "QC Samples",
+            "Mean Proteins / QC Sample",
+            "Min Proteins / QC Sample",
+            "Max Proteins / QC Sample",
+            "Proteins in ALL QC Samples",
+            "Median CV% Across QC Samples"
+          ),
+          Value = c(
+            length(grp_cols),
+            round(mean(per_samp), 1),
+            min(per_samp),
+            max(per_samp),
+            in_all,
+            if (is.na(med_cv)) "n/a" else as.character(med_cv)
+          ),
+          stringsAsFactors = FALSE
+        )
+        r4 <- write_table(wb, "Summary Statistics", grp_summ,
+                          start_row = r4, hdr_bg = CLR_MID_BLUE)
+        if (gi == 1L) first_grp_end <- r4
+        if (gi < n_groups) r4 <- r4 + 1   # spacer between groups
+      }
+
+      qc_row_ht_pts <- 30L
+      n_img_rows    <- if (n_groups == 1L) r4 - qc_table_row else first_grp_end - qc_table_row
+      qc_img_height <- n_img_rows * qc_row_ht_pts / 72
+      setRowHeights(wb, "Summary Statistics",
+                    rows    = qc_table_row:(r4 - 1L),
+                    heights = qc_row_ht_pts)
+      r4 <- r4 + 1   # final spacer
+
+      # Plot
+      qc_plot_file <- normalizePath(tempfile(fileext = ".png"), mustWork = FALSE)
+      cat(sprintf("  * Rendering QC plot -> %s\n", qc_plot_file))
+
+      px_w <- 1000L
+      px_h <- round(px_w * qc_img_height / 8)
+      png(qc_plot_file, width = px_w, height = px_h, res = 110)
+      tryCatch({
+        par(mfrow = c(1, 2), mar = c(5, 3.5, 2.5, 0.5), oma = c(0, 0, 1.2, 0))
+
+        # Left: boxplots colored by group
+        box_data  <- list()
+        box_names <- character(0)
+        box_cols  <- character(0)
+        for (grp in unique_groups) {
+          gd      <- group_data[[grp]]
+          log2mat <- log2(gd$mat)
+          log2mat[!is.finite(log2mat)] <- NA
+          for (j in seq_len(ncol(log2mat))) {
+            box_data[[length(box_data) + 1L]] <- log2mat[, j]
+            box_names <- c(box_names, gd$short[j])
+            box_cols  <- c(box_cols,  gd$color)
+          }
+        }
+        boxplot(box_data, names = box_names, las = 2,
+                col = box_cols, border = "#1F4E79",
+                main = "Intensity Distribution (log2)",
+                ylab = "log2 Intensity", cex.axis = 0.75)
+        if (n_groups > 1)
+          legend("topright", legend = unique_groups,
+                 fill = sapply(unique_groups, function(g) group_data[[g]]$color),
+                 bty = "n", cex = 0.75)
+
+        # Right: overlaid CV% histograms (density scale) + median lines
+        all_cv <- unlist(lapply(group_data, function(g) g$cv[is.finite(g$cv)]))
+        cv_xlim <- range(all_cv, na.rm = TRUE)
+        first_grp <- unique_groups[1]
+        cv_vals   <- group_data[[first_grp]]$cv
+        cv_vals   <- cv_vals[is.finite(cv_vals)]
+        hist(cv_vals, breaks = 40, freq = FALSE,
+             col  = adjustcolor(group_data[[first_grp]]$color, alpha.f = 0.45),
+             border = NA, xlim = cv_xlim,
+             main = "Per-Protein CV% Distribution",
+             xlab = "CV% across QC samples", ylab = "Density")
+        if (n_groups > 1) {
+          for (gi in seq(2L, n_groups)) {
+            grp     <- unique_groups[gi]
+            cv_vals <- group_data[[grp]]$cv
+            cv_vals <- cv_vals[is.finite(cv_vals)]
+            hist(cv_vals, breaks = 40, freq = FALSE, add = TRUE,
+                 col = adjustcolor(group_data[[grp]]$color, alpha.f = 0.45),
+                 border = NA)
+          }
+        }
+        for (grp in unique_groups)
+          abline(v = group_data[[grp]]$med_cv,
+                 col = group_data[[grp]]$color, lwd = 2, lty = 2)
+        legend("topright",
+               legend = sapply(unique_groups,
+                               function(g) sprintf("%s: %.1f%%", g, group_data[[g]]$med_cv)),
+               col = sapply(unique_groups, function(g) group_data[[g]]$color),
+               lwd = 2, lty = 2, bty = "n", cex = 0.8)
+
+        mtext("QC Sample Diagnostics", outer = TRUE, cex = 1.1, font = 2)
+      }, error = function(e) {
+        cat(sprintf("  [WARN] QC plot rendering failed: %s\n", conditionMessage(e)))
+      }, finally = {
+        dev.off()
+      })
+
+      if (file.exists(qc_plot_file)) {
+        insertImage(wb, "Summary Statistics", qc_plot_file,
+                    startRow = qc_table_row, startCol = 4,
+                    width = 8, height = qc_img_height, units = "in")
+        cat("  * QC plot inserted into Summary Statistics\n")
+      } else {
+        cat("  [WARN] QC plot file not found, skipping image insert\n")
+      }
+    }
   }
 
   setColWidths(wb, "Summary Statistics", cols = 1:7,
