@@ -136,7 +136,7 @@ $summary = @(
     ""
     "--- Runs per subfolder ---"
 )
-if (($filesBlank.Count -gt 0) -or ($filesPRTC.Count -gt 0)) {
+if ((($filesBlank.Count -gt 0) -or ($filesPRTC.Count -gt 0)) -and ($filesSamples.Count -gt 0)) {
     $summary += "First sample    : $($firstFileSample.CreationTime.ToString('yyyy-MM-dd HH:mm'))  $($firstFileSample.Name)"
     $summary += "Last sample     : $($lastFileSample.CreationTime.ToString('yyyy-MM-dd HH:mm'))  $($lastFileSample.Name)"
 }
@@ -153,7 +153,7 @@ Write-Host "  PRTC         : $($filesPRTC.Count)"
 Write-Host "  Samples      : $($filesSamples.Count)"
 Write-Host "  First run    : $($firstFile.CreationTime.ToString('yyyy-MM-dd'))  $($firstFile.Name)"
 Write-Host "  Last run     : $($lastFile.CreationTime.ToString('yyyy-MM-dd'))  $($lastFile.Name)"
-if (($filesBlank.Count -gt 0) -or ($filesPRTC.Count -gt 0)) {
+if ((($filesBlank.Count -gt 0) -or ($filesPRTC.Count -gt 0)) -and ($filesSamples.Count -gt 0)) {
     Write-Host "  First sample : $($firstFileSample.CreationTime.ToString('yyyy-MM-dd'))  $($firstFileSample.Name)"
     Write-Host "  Last sample  : $($lastFileSample.CreationTime.ToString('yyyy-MM-dd'))  $($lastFileSample.Name)"
 }

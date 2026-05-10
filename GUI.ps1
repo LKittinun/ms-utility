@@ -73,7 +73,7 @@ Add-Type -AssemblyName WindowsBase
 
         <Button Name="btn7" Margin="0,0,0,0" Padding="10,6" HorizontalContentAlignment="Left">
             <StackPanel>
-                <TextBlock Text="[7]  Service report (Excel)" FontSize="13"/>
+                <TextBlock Text="[7]  Analysis report (Excel)" FontSize="13"/>
                 <TextBlock Text="Analysis_Report.xlsx  (5 sheets)"
                            FontSize="11" Foreground="Gray" Margin="0,2,0,0"/>
             </StackPanel>
@@ -117,16 +117,16 @@ function Invoke-Script ($scriptFile) {
         -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ".\$scriptFile"
 }
 
-$window.FindName('btn1').Add_Click({   Invoke-Script '1_Project_init.ps1'         })
-$window.FindName('btn2').Add_Click({   Invoke-Script '2_Repair_project_order.ps1' })
-$window.FindName('btn3').Add_Click({   Invoke-Script '3_Backfill_column.ps1'      })
-$window.FindName('btn4').Add_Click({   Invoke-Script '4_Find_project.ps1'         })
-$window.FindName('btn5').Add_Click({   Invoke-Script '5_Column_usage.ps1'         })
-$window.FindName('btn6').Add_Click({   Invoke-Script '6_DIANN_metrics.ps1'        })
-$window.FindName('btn7').Add_Click({   Invoke-Script '7_Report_generator.ps1'     })
-$window.FindName('btn8').Add_Click({   Invoke-Script '8_Bulk_msConvert.ps1'       })
-$window.FindName('btn9').Add_Click({   Invoke-Script '9_Contaminant_check.ps1'    })
-$window.FindName('btn99').Add_Click({  Invoke-Script '99_Clear_files.ps1'         })
+$window.FindName('btn1').Add_Click({   Invoke-Script '01_Project_init.ps1'         })
+$window.FindName('btn2').Add_Click({   Invoke-Script '10_Repair_project_order.ps1' })
+$window.FindName('btn3').Add_Click({   Invoke-Script '11_Backfill_column.ps1'      })
+$window.FindName('btn4').Add_Click({   Invoke-Script '02_Find_project.ps1'         })
+$window.FindName('btn5').Add_Click({   Invoke-Script '04_Column_usage.ps1'         })
+$window.FindName('btn6').Add_Click({   Invoke-Script '05_DIANN_metrics.ps1'        })
+$window.FindName('btn7').Add_Click({   Invoke-Script '06_Report_generator.ps1'     })
+$window.FindName('btn8').Add_Click({   Invoke-Script '07_Bulk_msConvert.ps1'       })
+$window.FindName('btn9').Add_Click({   Invoke-Script '08_Contaminant_check.ps1'    })
+$window.FindName('btn99').Add_Click({  Invoke-Script '09_Clear_files.ps1'          })
 $window.FindName('btnExit').Add_Click({ $window.Close() })
 
 [void]$window.ShowDialog()

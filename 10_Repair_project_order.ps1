@@ -223,27 +223,28 @@ Write-Host ""
 $newLogRows = @()
 $newNo = 1
 foreach ($p in $projects) {
+    # Generate ProjectID before writing JSON so it is persisted on disk
+    if (-not $p.Json.ProjectID) {
+        $p.Json | Add-Member -NotePropertyName ProjectID -NotePropertyValue (
+            -join ((65..90) + (48..57) | Get-Random -Count 8 | ForEach-Object { [char]$_ })
+        ) -Force
+    }
     $p.Json.ProjectNo = $newNo
     $p.Json | ConvertTo-Json | Out-File -FilePath (Join-Path $p.Folder "project_info.json") -Encoding UTF8
     $changed = if ($p.OldNo -ne $newNo) { " (was $($p.OldNo))" } else { "" }
     Write-Host "  [$newNo] $($p.Name)$changed" -ForegroundColor $(if ($p.OldNo -ne $newNo) { "Yellow" } else { "Green" })
 
-    # Preserve existing ProjectID; generate one if missing (older projects)
-    if (-not $p.Json.ProjectID) {
-        $p.Json | Add-Member -NotePropertyName ProjectID -NotePropertyValue (
-            -join ((65..90) + (48..57) | Get-Random -Count 8 | ForEach-Object { [char]$_ })
-        )
-    }
-
     $newLogRows += [PSCustomObject]@{
-        ProjectID       = $p.Json.ProjectID
-        ProjectNo       = $newNo
-        Date            = $p.Json.Created
-        Project         = $p.Json.Project
-        PI              = if ($null -eq $p.Json.PI) { "" } else { $p.Json.PI }
-        AnalyticsColumn = $p.Json.AnalyticsColumn
-        TrapColumn      = if ($null -eq $p.Json.TrapColumn) { "" } else { $p.Json.TrapColumn }
-        SampleFolders   = ($p.Json.SampleFolders -join ";")
+        ProjectID             = $p.Json.ProjectID
+        ProjectNo             = $newNo
+        Date                  = $p.Json.Created
+        Project               = $p.Json.Project
+        PI                    = if ($null -eq $p.Json.PI) { "" } else { $p.Json.PI }
+        AnalyticsColumn       = $p.Json.AnalyticsColumn
+        ColumnDescription     = if ($null -eq $p.Json.ColumnDescription) { "" } else { $p.Json.ColumnDescription }
+        TrapColumn            = if ($null -eq $p.Json.TrapColumn) { "" } else { $p.Json.TrapColumn }
+        TrapColumnDescription = if ($null -eq $p.Json.TrapColumnDescription) { "" } else { $p.Json.TrapColumnDescription }
+        SampleFolders         = ($p.Json.SampleFolders -join ";")
     }
     $newNo++
 }

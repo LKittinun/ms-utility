@@ -264,38 +264,51 @@ foreach ($p in $projects) {
         Where-Object { $prohibited -notcontains ($_.Name -replace '^\d{4}-\d{2}-\d{2}_','').ToLower() } |
         Select-Object -ExpandProperty Name
 
+    $created = $p.CreationTime.ToString("yyyy-MM-dd HH:mm")
+
     if (Test-Path $jsonPath) {
         $existing  = Get-Content $jsonPath -Raw | ConvertFrom-Json
         $projectID = if ($existing.ProjectID) { $existing.ProjectID }
                      else { -join ((65..90) + (48..57) | Get-Random -Count 8 | ForEach-Object { [char]$_ }) }
+        # Preserve all existing fields; only update ProjectNo and fill missing ProjectID
+        $existing.ProjectNo = $newNo
+        if (-not $existing.ProjectID) {
+            $existing | Add-Member -NotePropertyName ProjectID -NotePropertyValue $projectID -Force
+        }
+        if (-not $existing.AnalyticsColumn) {
+            $existing | Add-Member -NotePropertyName AnalyticsColumn -NotePropertyValue $analyticsCol -Force
+        }
+        $existing | ConvertTo-Json | Out-File -FilePath $jsonPath -Encoding UTF8
         Write-Host "  [$newNo] $($p.Name)  (preserved)" -ForegroundColor Gray
     } else {
         $projectID = -join ((65..90) + (48..57) | Get-Random -Count 8 | ForEach-Object { [char]$_ })
+        [PSCustomObject]@{
+            ProjectID       = $projectID
+            Project         = $p.Name
+            PI              = $null
+            AnalyticsColumn = $analyticsCol
+            ColumnDescription = ""
+            TrapColumn      = $null
+            TrapColumnDescription = ""
+            ProjectNo       = $newNo
+            Created         = $created
+            SampleFolders   = @($sampleFolders)
+        } | ConvertTo-Json | Out-File -FilePath $jsonPath -Encoding UTF8
         Write-Host "  [$newNo] $($p.Name)  ID: $projectID" -ForegroundColor Green
     }
 
-    $created = $p.CreationTime.ToString("yyyy-MM-dd HH:mm")
-
-    [PSCustomObject]@{
-        ProjectID       = $projectID
-        Project         = $p.Name
-        PI              = if ((Test-Path $jsonPath) -and $existing.PI) { $existing.PI } else { $null }
-        AnalyticsColumn = $analyticsCol
-        TrapColumn      = $null
-        ProjectNo       = $newNo
-        Created         = $created
-        SampleFolders   = @($sampleFolders)
-    } | ConvertTo-Json | Out-File -FilePath $jsonPath -Encoding UTF8
-
+    $jsonOut = Get-Content $jsonPath -Raw | ConvertFrom-Json
     $logRows += [PSCustomObject]@{
-        ProjectID       = $projectID
-        ProjectNo       = $newNo
-        Date            = $created
-        Project         = $p.Name
-        PI              = if ((Test-Path $jsonPath) -and $existing.PI) { $existing.PI } else { "" }
-        AnalyticsColumn = $analyticsCol
-        TrapColumn      = ""
-        SampleFolders   = $sampleFolders -join ";"
+        ProjectID             = $projectID
+        ProjectNo             = $newNo
+        Date                  = if ($jsonOut.Created) { $jsonOut.Created } else { $created }
+        Project               = $jsonOut.Project
+        PI                    = if ($jsonOut.PI) { $jsonOut.PI } else { "" }
+        AnalyticsColumn       = $analyticsCol
+        ColumnDescription     = if ($jsonOut.ColumnDescription) { $jsonOut.ColumnDescription } else { "" }
+        TrapColumn            = if ($jsonOut.TrapColumn) { $jsonOut.TrapColumn } else { "" }
+        TrapColumnDescription = if ($jsonOut.TrapColumnDescription) { $jsonOut.TrapColumnDescription } else { "" }
+        SampleFolders         = (@($jsonOut.SampleFolders) -join ";")
     }
 
     $newNo++
