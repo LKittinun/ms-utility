@@ -124,11 +124,18 @@ $projects = Get-ChildItem -Path $analyticsPath -Directory |
     Where-Object { $prohibited -notcontains ($_.Name -replace '^\d{4}-\d{2}-\d{2}_','').ToLower() } |
     Where-Object { Test-Path (Join-Path $_.FullName "project_info.json") } |
     ForEach-Object {
-        $json = Get-Content (Join-Path $_.FullName "project_info.json") -Raw | ConvertFrom-Json
+        $f    = $_
+        $json = Get-Content (Join-Path $f.FullName "project_info.json") -Raw | ConvertFrom-Json
+        $createdDt = try {
+            [datetime]::ParseExact($json.Created, "yyyy-MM-dd HH:mm", $null)
+        } catch {
+            Write-Warning "  Cannot parse Created date '$($json.Created)' for '$($f.Name)' - using folder date"
+            $f.CreationTime
+        }
         [PSCustomObject]@{
-            Folder    = $_.FullName
-            Name      = $_.Name
-            Created   = [datetime]::ParseExact($json.Created, "yyyy-MM-dd HH:mm", $null)
+            Folder    = $f.FullName
+            Name      = $f.Name
+            Created   = $createdDt
             OldNo     = $json.ProjectNo
             Json      = $json
         }

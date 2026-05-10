@@ -29,11 +29,9 @@ library(cowplot, quietly = T)
 library(ComplexHeatmap, quietly = T)
 })
 
-suppressMessages( options(warn=-1) )
 args <- commandArgs(trailingOnly = T)
 
-folder_path <- args
-  #"C:/DIA-NN/1.9/Result/4_Rattus_ziptip_3k_06_07_2024/VF"
+folder_path <- args[1]
 
 exp_name <- tail(unlist(strsplit(folder_path, split = "/")), 1)
 
@@ -118,7 +116,10 @@ if (!is.na(pg_matrix_file)) {
 }
 
 pg_lfq <- pg_lfq_nontrunc
-colnames(pg_lfq)[-c(1:4)] <- str_trunc(colnames(pg_lfq)[-c(1:4)], width = 20, "left")
+pg_meta <- c("Protein.Group", "Protein.Ids", "Genes", "Protein.Names", "First.Protein.Description")
+pg_sc   <- setdiff(colnames(pg_lfq), pg_meta)
+colnames(pg_lfq)[colnames(pg_lfq) %in% pg_sc] <- str_trunc(pg_sc, width = 20, "left")
+pg_sc   <- str_trunc(pg_sc, width = 20, "left")
 
 pg_log2 <- pg_lfq |> 
   select(-Protein.Names, -Genes, -First.Protein.Description) |> 
@@ -141,7 +142,10 @@ pep_normalized_nontrunc <- diann_matrix(df, id.header="Stripped.Sequence", quant
 message("Done!")
 
 pep_normalized <- pep_normalized_nontrunc
-colnames(pep_normalized)[-c(1:5)] <- str_trunc(colnames(pep_normalized)[-c(1:5)], width = 20, "left")
+pep_meta <- c("Peptides", "Protein.Group", "Protein.Ids", "Genes", "Protein.Names", "First.Protein.Description")
+pep_sc   <- setdiff(colnames(pep_normalized), pep_meta)
+colnames(pep_normalized)[colnames(pep_normalized) %in% pep_sc] <- str_trunc(pep_sc, width = 20, "left")
+pep_sc   <- str_trunc(pep_sc, width = 20, "left")
 
 pep_log2 <- pep_normalized |> 
   select(-Protein.Names, -Protein.Group, -Genes, -First.Protein.Description) |> 
@@ -151,14 +155,14 @@ pep_log2 <- pep_normalized |>
 message(" ")
 sink(paste0("result/summary_", exp_name,".txt"))
   
-cat(paste0("Total samples: ", ncol(pg_lfq[,-c(1:4), drop = F])), "\n")
+cat(paste0("Total samples: ", length(pg_sc)), "\n")
 cat(paste0("Total peptides identified: ", nrow(pep_normalized)), "\n")
 cat(paste0("Total proteins identified: ", nrow(pg_lfq)), "\n")
 
 diann_save(pg_lfq_nontrunc, file = paste0("result/pg_lfq_",exp_name,".tsv"))
 diann_save(pep_normalized_nontrunc, file = paste0("result/pep_normalized_",exp_name,".tsv"))
 
-tot_col <- ncol(pg_lfq[,-c(1:4), drop = F]) 
+tot_col <- length(pg_sc)
 
 p_dim <- dplyr::case_when(
   tot_col <= 10 ~ 10,
@@ -170,12 +174,12 @@ p_dim <- dplyr::case_when(
 if(tot_col >1){
 
     pg_lfq_name <- pg_lfq |> column_to_rownames("Protein.Group")
-    prot_half <- rowSums(!is.na(pg_lfq_name[,-c(1:3)])) >= ncol(pg_lfq_name[,-c(1:3)])*0.5
+    prot_half <- rowSums(!is.na(pg_lfq_name[, pg_sc])) >= ncol(pg_lfq_name[, pg_sc]) * 0.5
     prot_half_n <- sum(prot_half)
-    
+
     cat(paste0("Proteins that are quantified in > 50% of experiments: ", prot_half_n, "\n"))
-    
-    missval <- map(pg_lfq[,-c(1:4), drop = F], ~round(sum(!is.na(.x))/length(.x),2)) |> unlist()
+
+    missval <- map(pg_lfq[, pg_sc, drop = F], ~round(sum(!is.na(.x))/length(.x),2)) |> unlist()
     
     if (sum(missval < 0.5) != 0){ 
       
@@ -192,14 +196,15 @@ if(tot_col >1){
     
     ## Plot
     message("Generating missing value plot...")
-    miss_val_plot <- naniar::vis_miss(pg_lfq[,-c(1:4), drop = F], sort_miss = T, cluster = T, warn_large_data = F)
+    miss_val_plot <- naniar::vis_miss(pg_lfq[, pg_sc, drop = F], sort_miss = T, cluster = T, warn_large_data = F)
     
     ggsave(miss_val_plot, filename = "result/plot/hm/miss_val.tiff", height = max(7,p_dim-5), width = max(7,p_dim-5), create.dir = T)
     
-    miss_val_case_summary <- naniar::miss_var_summary(pg_lfq_nontrunc[,-c(1:4), drop = F], order = F) |> 
+    pg_sc_orig <- setdiff(colnames(pg_lfq_nontrunc), pg_meta)
+    miss_val_case_summary <- naniar::miss_var_summary(pg_lfq_nontrunc[, pg_sc_orig, drop = F], order = F) |>
       mutate(tot_n = ifelse(n_miss == 0, nrow(pg_lfq), n_miss*(100/pct_miss))) |> 
       select(variable, tot_n, n_miss, pct_miss)
-    miss_val_prot_summary <- pg_lfq_nontrunc[,-c(2:4), drop = F] |> column_to_rownames("Protein.Group") |> 
+    miss_val_prot_summary <- pg_lfq_nontrunc[, c("Protein.Group", pg_sc_orig), drop = F] |> column_to_rownames("Protein.Group") |>
       t() |> as.data.frame() |> 
       naniar::miss_var_summary(order = F) |> 
       mutate(tot_n = ifelse(n_miss == 0, tot_col, n_miss*(100/pct_miss))) |> 

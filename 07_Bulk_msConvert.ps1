@@ -34,6 +34,13 @@ Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoN
 }
 Write-Host ""
 
+if (-not (Get-Command msconvert -ErrorAction SilentlyContinue)) {
+    Write-Host "  [ERROR] msconvert not found on PATH. Install ProteoWizard and ensure it is on PATH." -ForegroundColor Red
+    Write-Host ""
+    pause
+    return
+}
+
 $first_path = Get-Location
 $path = Read-Host "Set the path to the directory containing the .raw files, leave blank for a current location"
 if ($path -eq "") { $path = (Get-Location).Path }
@@ -47,7 +54,7 @@ if (-Not (Test-Path $outputDir)) {
     New-Item -ItemType Directory -Path $outputDir
 }
 
-Get-ChildItem -Filter *.raw | ForEach-Object {
+Get-ChildItem -Recurse -Filter *.raw | ForEach-Object {
     $outputFile = Join-Path $outputDir "$($_.BaseName).mzML"
     if (Test-Path $outputFile) {
         Write-Host "File $outputFile already exists. Skipping conversion."

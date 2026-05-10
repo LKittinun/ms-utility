@@ -872,10 +872,9 @@ build_report <- function(project_dir, result_dir, out_path) {
                widths = c(40, 12, 12, 12, 12, 12, 10))
 
   # -- Sheet: Protein Groups (pg_matrix) — direct copy -------------------------
-  pg_path <- find_pg_matrix(result_dir)
+  # pg_path and pg_raw already loaded above for Summary Statistics; reuse them
   if (!is.null(pg_path)) {
     cat("  * Writing protein group matrix (direct copy)\n")
-    pg_raw <- read.delim(pg_path, stringsAsFactors = FALSE, check.names = FALSE)
     pg_df  <- shorten_colnames(pg_raw)
     sc     <- get_sample_cols(pg_df)
     addWorksheet(wb, "Protein Groups (pg_matrix)")

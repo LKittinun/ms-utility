@@ -34,7 +34,9 @@ Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoN
 }
 Write-Host ""
 
-$first_path = Get-location
+$first_path    = Get-Location
+$mzsnifferPath = Join-Path $PSScriptRoot "mzsniffer\mzsniffer.exe"
+
 $path = Read-Host "Insert directory, leave blank for a current location"
 if ($path -eq "") { $path = (Get-Location).Path }
 Set-location -Path $path
@@ -42,7 +44,6 @@ Set-location -Path $path
 $files           = Get-ChildItem "*.mzML" | Sort-Object LastWriteTime
 $logFilePath     = ".\contaminant_check.txt"
 $summaryFilePath = ".\contaminant_summary.csv"
-$mzsnifferPath   = Join-Path -Path $first_path -ChildPath "mzsniffer\mzsniffer.exe"
 
 if ($files.Count -eq 0) {
     Write-Host "  No .mzML files found in $path" -ForegroundColor Yellow
