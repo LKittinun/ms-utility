@@ -460,6 +460,8 @@ build_report <- function(project_dir, result_dir, out_path) {
   setRowHeights(wb, "Project Overview", rows = r, heights = 30)
   r <- r + 2
 
+  is_legacy <- isTRUE(log_info[["Quantification Method"]] == "Legacy")
+
   sheet_guide <- data.frame(
     Tab = c(
       "1 \u2014 Project Overview",
@@ -473,7 +475,7 @@ build_report <- function(project_dir, result_dir, out_path) {
       "MS raw file inventory: file sizes and .quant pairing status.",
       "Per-sample DIA-NN identification counts, mass accuracy, RT metrics, and run-quality flags.",
       "Cross-sample means, medians, and CVs for key QC metrics; protein group detection overview.",
-      "Full protein group quantification matrix (QuantUMS intensities). Primary deliverable for downstream analysis."
+      paste0("Full protein group quantification matrix (", if (is_legacy) "Legacy" else "QuantUMS", " intensities). Primary deliverable for downstream analysis.")
     ),
     stringsAsFactors = FALSE, check.names = FALSE
   )
@@ -492,13 +494,16 @@ build_report <- function(project_dir, result_dir, out_path) {
   for (note in c(
     paste0("\u2022  FINAL RESULT \u2014 The \u2018Protein Groups (pg_matrix)\u2019 tab (Sheet 5) is the ",
            "final quantification output and the recommended starting point for all downstream analysis."),
-    paste0("\u2022  LOG2 TRANSFORMATION \u2014 Raw intensities are QuantUMS values on a linear scale. ",
+    paste0("\u2022  LOG2 TRANSFORMATION \u2014 Raw intensities are ",
+           if (is_legacy) "direct (legacy) quantification values" else "QuantUMS values",
+           " on a linear scale. ",
            "Log2 transformation is strongly recommended before statistical testing, PCA, heatmaps, or volcano plots."),
     paste0("\u2022  MISSING VALUES \u2014 A value of zero or blank means the protein was not detected in that ",
            "sample (below detection threshold or q-value > 0.01). Treat these as NA or apply imputation before downstream analysis."),
     paste0("\u2022  Q-VALUE FILTER \u2014 All reported identifications pass DIA-NN\u2019s 1% FDR filter ",
            "(precursor and protein q-value \u2264 0.01) unless a different threshold is listed in the run parameters below."),
-    paste0("\u26A0  NORMALISATION \u2014 Intensities are already normalised by DIA-NN at the precursor level (QuantUMS pipeline).")
+    paste0("\u26A0  NORMALISATION \u2014 Intensities are already normalised by DIA-NN at the precursor level",
+           if (is_legacy) "." else " (QuantUMS pipeline).")
   )) {
     writeData(wb, "Project Overview", note, startRow = r, startCol = 1)
     addStyle(wb, "Project Overview",
@@ -551,7 +556,8 @@ build_report <- function(project_dir, result_dir, out_path) {
       "Functional description of the leading (highest-confidence) protein in the group.",
       "Total number of peptide sequences identified and used for quantification of this protein group.",
       "Number of proteotypic (peptides unique to this protein, not shared with any other) sequences - a measure of identification confidence.",
-      "QuantUMS protein intensity for each sample (column header = sample name). Blank = not detected; treat as NA or apply imputation."
+      paste0(if (is_legacy) "Legacy" else "QuantUMS",
+             " protein intensity for each sample (column header = sample name). Blank = not detected; treat as NA or apply imputation.")
     ),
     stringsAsFactors = FALSE, check.names = FALSE
   )
