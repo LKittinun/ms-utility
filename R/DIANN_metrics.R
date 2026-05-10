@@ -166,10 +166,9 @@ tot_col <- length(pg_sc)
 
 p_dim <- dplyr::case_when(
   tot_col <= 10 ~ 10,
-  tot_col > 10 & tot_col <= 20 ~ tot_col,
-  tot_col > 20 & tot_col <= 30 ~ tot_col,
-  tot_col > 30 ~ 30
-  )
+  tot_col <= 30  ~ tot_col,
+  .default       ~ 30
+)
  
 if(tot_col >1){
 
@@ -221,7 +220,6 @@ if(tot_col >1){
     if(tot_col > 1){
       
       message("Generating protein intensity heatmap ...")
-      #BUG
       miss_0 <-  miss_val_prot_summary[miss_val_prot_summary$pct_miss==0,]$variable
       miss_25 <- miss_val_prot_summary[miss_val_prot_summary$pct_miss<=25,]$variable
       miss_50 <- miss_val_prot_summary[miss_val_prot_summary$pct_miss<=50,]$variable

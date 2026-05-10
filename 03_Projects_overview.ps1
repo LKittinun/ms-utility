@@ -98,7 +98,7 @@ foreach ($jf in $jsonFiles) {
         TrapColumnDescription = if ($info.TrapColumnDescription)     { $info.TrapColumnDescription }          else { "-" }
         Created               = if ($info.Created)                   { $info.Created }                        else { "-" }
         SampleCount           = if ($info.SampleFolders)             { @($info.SampleFolders).Count }         else { 0 }
-        SampleFolders         = if ($info.SampleFolders)             { (@($info.SampleFolders) -join "; ") }  else { "-" }
+        SampleFolders         = if ($info.SampleFolders)             { (@($info.SampleFolders) -join ";") }   else { "-" }
     }
 }
 

@@ -303,7 +303,16 @@ if ($null -eq $colInfoData) {
     Write-Host "  New column detected - enter column details (all optional):" -ForegroundColor Cyan
     Write-Host "  $rule" -ForegroundColor DarkCyan
     Write-Host ""
-    $colFirstUse = Read-Host "  First use date (yyyy-MM-dd)"
+    do {
+        $colFirstUse = Read-Host "  First use date (yyyy-MM-dd, leave blank to skip)"
+        if ($colFirstUse -eq "") { break }
+        $parsedDate = $null
+        $valid = [datetime]::TryParseExact($colFirstUse, "yyyy-MM-dd",
+                     [System.Globalization.CultureInfo]::InvariantCulture,
+                     [System.Globalization.DateTimeStyles]::None,
+                     [ref]$parsedDate)
+        if (-not $valid) { Write-Host "  Invalid format - please enter yyyy-MM-dd (e.g. 2024-03-05)" -ForegroundColor Yellow }
+    } while (-not $valid)
     $colInfoChanged = $true
 } else {
     # Existing column - carry over fields

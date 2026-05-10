@@ -46,8 +46,7 @@ if ($files.Count -eq 0) {
     Write-Host ""
     $confirm = Read-Host "  Confirm removal? y = yes"
     if ($confirm -eq "y") {
-        $safeFiles = @($files | Where-Object { $_.Extension -ine ".raw" })
-        Remove-Item $safeFiles
+        Remove-Item $files
         Write-Host "  All files removed." -ForegroundColor Green
     } else {
         Write-Host "  Cancelled." -ForegroundColor DarkYellow
