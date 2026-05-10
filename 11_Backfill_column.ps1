@@ -324,7 +324,7 @@ Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host "  Done!  $($projects.Count) project(s) processed." -ForegroundColor Cyan
 Write-Host "  $rule" -ForegroundColor DarkCyan
 Write-Host "  TrapColumn is blank for backfilled projects." -ForegroundColor DarkGray
-Write-Host "  Use [7] Repair project order to fix ordering" -ForegroundColor DarkGray
+Write-Host "  Use [10] Repair project order to fix ordering" -ForegroundColor DarkGray
 Write-Host "  or edit project_info.json files directly." -ForegroundColor DarkGray
 Write-Host "  $border" -ForegroundColor DarkCyan
 

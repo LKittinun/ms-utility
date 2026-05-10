@@ -901,7 +901,7 @@ build_report <- function(project_dir, result_dir, out_path) {
   cat(sprintf("  OK  Saved -> %s\n", out_path))
 }
 
-# (build_final_results removed — pg_matrix is now Sheet 6 of Analysis_Report.xlsx)
+# (build_final_results removed — pg_matrix is now Sheet 5 of Analysis_Report.xlsx)
 
 # -----------------------------------------------------------------------------
 # MAIN

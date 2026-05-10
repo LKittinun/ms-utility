@@ -76,22 +76,52 @@ if ($files.Count -eq 0) {
     return
 }
 
-$runNo = 0
-$fileInfoList = foreach ($file in $files) {
-    $runNo++
-    [PSCustomObject]@{
-        RunNo        = $runNo
-        Name         = $file.Name
-        Subfolder    = $file.Directory.Name
-        SizeMB       = [Math]::Round($file.Length / 1MB, 2)
-        CreationTime = $file.CreationTime
-        FullPath     = $file.FullName
+# Build a map from each sample folder full path -> project info, using SampleFolders from json
+$sampleDirMap = @{}
+Get-ChildItem -Path $path -Recurse -Filter "project_info.json" -File | ForEach-Object {
+    $info    = Get-Content $_.FullName -Raw | ConvertFrom-Json
+    $projDir = $_.DirectoryName
+    $folders = @($info.SampleFolders)
+    if ($folders.Count -eq 0) {
+        $sampleDirMap[$projDir] = $info
+    } else {
+        foreach ($sf in $folders) {
+            $sampleDirMap[(Join-Path $projDir $sf)] = $info
+        }
     }
 }
 
-$filesBlank   = $fileInfoList | Where-Object { $_.Subfolder -match "(?i)^blank$" }
-$filesPRTC    = $fileInfoList | Where-Object { $_.Subfolder -match "(?i)^prtc$" }
-$filesSamples = $fileInfoList | Where-Object { $_.Subfolder -notmatch "(?i)^(blank|prtc)$" }
+$runNo = 0
+$fileInfoList = foreach ($file in $files) {
+    $runNo++
+    $projInfo   = $sampleDirMap[$file.DirectoryName]
+    $trapCol    = if ($projInfo -and $projInfo.TrapColumn)            { $projInfo.TrapColumn            } else { "" }
+    $trapDesc   = if ($projInfo -and $projInfo.TrapColumnDescription) { $projInfo.TrapColumnDescription } else { "" }
+    $grandParent = $file.Directory.Parent
+    $grandName   = $grandParent.Name -replace '^\d{4}-\d{2}-\d{2}_', ''
+    $leafName    = $file.Directory.Name
+    $subLabel    = if ($grandParent.FullName -eq $path) {
+                       $leafName -replace '^\d{4}-\d{2}-\d{2}_', ''
+                   } else {
+                       "$grandName/$leafName"
+                   }
+    [PSCustomObject]@{
+        RunNo                 = $runNo
+        Name                 = $file.Name
+        Subfolder            = $leafName
+        SubfolderLabel       = $subLabel
+        SizeMB               = [Math]::Round($file.Length / 1MB, 2)
+        CreationTime         = $file.CreationTime
+        TrapColumn           = $trapCol
+        TrapColumnDescription = $trapDesc
+        FullPath             = $file.FullName
+    }
+}
+
+$filesBlank    = $fileInfoList | Where-Object { $_.Subfolder -match "(?i)^blank$" }
+$filesPRTC     = $fileInfoList | Where-Object { $_.Subfolder -match "(?i)^prtc$" }
+$filesSamples  = $fileInfoList | Where-Object { $_.Subfolder -notmatch "(?i)^(blank|prtc)$" }
+$filesNonBlank = $fileInfoList | Where-Object { $_.Subfolder -notmatch "(?i)^blank$" }
 
 $firstFile        = $fileInfoList  | Select-Object -First 1
 $lastFile         = $fileInfoList  | Select-Object -Last 1
@@ -106,9 +136,16 @@ $medSizeMB = ($fileInfoList.SizeMB | Sort-Object)[[Math]::Floor($fileInfoList.Co
 
 $subfolderCounts = $fileInfoList |
     Where-Object { $_.Subfolder -ne "Column_usage_history" } |
-    Group-Object Subfolder |
+    Group-Object SubfolderLabel |
     Sort-Object Count -Descending |
     Select-Object Name, Count
+
+$trapColGroups = $fileInfoList |
+    Where-Object { $_.TrapColumn -ne "" } |
+    Group-Object TrapColumn |
+    Sort-Object Count -Descending |
+    Select-Object Name, Count, @{N='Description'; E={($_.Group | Select-Object -First 1).TrapColumnDescription}}
+$trapUnclassified = ($fileInfoList | Where-Object { $_.TrapColumn -eq "" }).Count
 
 $fileInfoList | Export-Csv -Path $outputCsvFilePath -NoTypeInformation
 
@@ -117,7 +154,7 @@ $summary = @(
     "Directory       : $path"
     ""
     "--- Injection count ---"
-    "Total runs      : $($fileInfoList.Count)"
+    "Total runs      : $($filesNonBlank.Count)  (blank excluded)"
     "Blank           : $($filesBlank.Count)"
     "PRTC            : $($filesPRTC.Count)"
     "Samples         : $($filesSamples.Count)"
@@ -141,13 +178,24 @@ if ((($filesBlank.Count -gt 0) -or ($filesPRTC.Count -gt 0)) -and ($filesSamples
     $summary += "Last sample     : $($lastFileSample.CreationTime.ToString('yyyy-MM-dd HH:mm'))  $($lastFileSample.Name)"
 }
 foreach ($sf in $subfolderCounts) { $summary += "$($sf.Name.PadRight(20)): $($sf.Count)" }
+$summary += ""
+$summary += "--- Trap column usage ---"
+if ($trapColGroups.Count -eq 0 -and $trapUnclassified -eq $fileInfoList.Count) {
+    $summary += "(no project_info.json found - trap column unknown)"
+} else {
+    foreach ($tc in $trapColGroups) {
+        $label = if ($tc.Description) { "$($tc.Name)  ($($tc.Description))" } else { $tc.Name }
+        $summary += "$($label.PadRight(48)): $($tc.Count) runs"
+    }
+    if ($trapUnclassified -gt 0) { $summary += "(unclassified)$(' ' * 34): $trapUnclassified runs" }
+}
 $summary | Out-File -FilePath $outputTextFilePath -Encoding UTF8
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host "  Results" -ForegroundColor Cyan
 Write-Host "  $rule" -ForegroundColor DarkCyan
-Write-Host "  Total runs   : $($fileInfoList.Count)"
+Write-Host "  Total runs   : $($filesNonBlank.Count)  (blank excluded)"
 Write-Host "  Blank        : $($filesBlank.Count)"
 Write-Host "  PRTC         : $($filesPRTC.Count)"
 Write-Host "  Samples      : $($filesSamples.Count)"
@@ -164,6 +212,18 @@ Write-Host "  $rule" -ForegroundColor DarkCyan
 Write-Host "  Runs per subfolder" -ForegroundColor Cyan
 Write-Host "  $rule" -ForegroundColor DarkCyan
 foreach ($sf in $subfolderCounts) { Write-Host "  $($sf.Name.PadRight(30)) $($sf.Count) runs" }
+Write-Host "  $rule" -ForegroundColor DarkCyan
+Write-Host "  Trap column usage" -ForegroundColor Cyan
+Write-Host "  $rule" -ForegroundColor DarkCyan
+if ($trapColGroups.Count -eq 0 -and $trapUnclassified -eq $fileInfoList.Count) {
+    Write-Host "  (no project_info.json found - trap column unknown)" -ForegroundColor DarkGray
+} else {
+    foreach ($tc in $trapColGroups) {
+        $label = if ($tc.Description) { "$($tc.Name)  ($($tc.Description))" } else { $tc.Name }
+        Write-Host "  $($label.PadRight(40)) $($tc.Count) runs"
+    }
+    if ($trapUnclassified -gt 0) { Write-Host "  (unclassified)$(' ' * 26) $trapUnclassified runs" -ForegroundColor DarkGray }
+}
 Write-Host "  $rule" -ForegroundColor DarkCyan
 Write-Host "  CSV : $outputCsvFilePath" -ForegroundColor DarkCyan
 Write-Host "  TXT : $outputTextFilePath" -ForegroundColor DarkCyan

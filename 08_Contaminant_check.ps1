@@ -37,6 +37,12 @@ Write-Host ""
 $first_path    = Get-Location
 $mzsnifferPath = Join-Path $PSScriptRoot "mzsniffer\mzsniffer.exe"
 
+if (-not (Test-Path $mzsnifferPath)) {
+    Write-Host "  mzsniffer.exe not found at: $mzsnifferPath" -ForegroundColor Red
+    Write-Host "  Place mzsniffer.exe under the mzsniffer\ subfolder next to this script." -ForegroundColor Yellow
+    Write-Host ""; return
+}
+
 $path = Read-Host "Insert directory, leave blank for a current location"
 if ($path -eq "") { $path = (Get-Location).Path }
 Set-location -Path $path
