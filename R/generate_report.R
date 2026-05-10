@@ -167,8 +167,9 @@ parse_log <- function(log_path) {
 
   info[["FDR Threshold (q-value)"]]    <- rx("--qvalue\\s+([\\d.]+)")
   major_ver <- suppressWarnings(as.integer(sub("^(\\d+)\\..*", "\\1", ver_str)))
-  info[["Quantification Method"]]      <- if (!is.na(major_ver) && major_ver >= 2)
-                                            "QuantUMS (DIA-NN 2.x default)" else "MaxLFQ"
+  info[["Quantification Method"]]      <- if (grepl("--direct-quant", text, fixed = TRUE)) "Legacy"
+                                          else if (!is.na(major_ver) && major_ver >= 2) "QuantUMS"
+                                          else "MaxLFQ"
   info[["Match-Between-Runs (MBR)"]]   <- ifelse(grepl("--reanalyse",    text), "Yes", "No")
   info[["Output Matrices"]]            <- ifelse(grepl("--matrices",     text), "Yes", "No")
   info[["Generate Spectral Library"]]  <- ifelse(grepl("--gen-spec-lib", text), "Yes", "No")
