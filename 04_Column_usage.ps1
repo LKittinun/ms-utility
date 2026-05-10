@@ -141,11 +141,11 @@ $subfolderCounts = $fileInfoList |
     Select-Object Name, Count
 
 $trapColGroups = $fileInfoList |
-    Where-Object { $_.TrapColumn -ne "" } |
+    Where-Object { $_.Subfolder -notmatch "(?i)^blank$" -and $_.TrapColumn -ne "" } |
     Group-Object TrapColumn |
     Sort-Object Count -Descending |
     Select-Object Name, Count, @{N='Description'; E={($_.Group | Select-Object -First 1).TrapColumnDescription}}
-$trapUnclassified = ($fileInfoList | Where-Object { $_.TrapColumn -eq "" }).Count
+$trapUnclassified = ($fileInfoList | Where-Object { $_.Subfolder -notmatch "(?i)^blank$" -and $_.TrapColumn -eq "" }).Count
 
 $fileInfoList | Export-Csv -Path $outputCsvFilePath -NoTypeInformation
 
