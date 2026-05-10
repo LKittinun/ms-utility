@@ -137,6 +137,10 @@ parse_log <- function(log_path) {
     "FASTA Database(s)"             = "n/a",
     "Contaminant Exclusion Tag"     = "n/a",
     # --- Peptide settings ------------------------------------------------
+    "Peptide Length"                = "n/a",
+    "Precursor m/z"                 = "n/a",
+    "Precursor Charge"              = "n/a",
+    "Fragment m/z"                  = "n/a",
     "Enzyme Cut Sites"              = "n/a",
     "Missed Cleavages"              = "n/a",
     "N-term Met Excision"           = "n/a",
@@ -183,6 +187,18 @@ parse_log <- function(log_path) {
     info[["FASTA Database(s)"]] <- paste(basename(fastas), collapse = "; ")
 
   info[["Contaminant Exclusion Tag"]]  <- rx("--cont-quant-exclude\\s+(\\S+)")
+
+  pep_min <- rx("--min-pep-len\\s+(\\d+)"); pep_max <- rx("--max-pep-len\\s+(\\d+)")
+  if (pep_min != "n/a" || pep_max != "n/a") info[["Peptide Length"]] <- paste0(pep_min, "-", pep_max, " aa")
+
+  pr_mz_min <- rx("--min-pr-mz\\s+([\\d.]+)"); pr_mz_max <- rx("--max-pr-mz\\s+([\\d.]+)")
+  if (pr_mz_min != "n/a" || pr_mz_max != "n/a") info[["Precursor m/z"]] <- paste0(pr_mz_min, "-", pr_mz_max)
+
+  pr_z_min <- rx("--min-pr-charge\\s+(\\d+)"); pr_z_max <- rx("--max-pr-charge\\s+(\\d+)")
+  if (pr_z_min != "n/a" || pr_z_max != "n/a") info[["Precursor Charge"]] <- paste0(pr_z_min, "-", pr_z_max)
+
+  fr_min <- rx("--min-fr-mz\\s+([\\d.]+)"); fr_max <- rx("--max-fr-mz\\s+([\\d.]+)")
+  if (fr_min != "n/a" || fr_max != "n/a") info[["Fragment m/z"]] <- paste0(fr_min, "-", fr_max)
 
   info[["Enzyme Cut Sites"]]           <- rx("--cut\\s+(\\S+)")
   info[["Missed Cleavages"]]           <- rx("--missed-cleavages\\s+(\\d+)")
