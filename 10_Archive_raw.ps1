@@ -82,6 +82,7 @@ Write-Host "  Dest   : $archiveDest" -ForegroundColor DarkGray
 Write-Host ""
 
 # -- Mode picker --------------------------------------------------------------
+Write-Host "  Select mode:" -ForegroundColor DarkCyan
 $mItems = @("Dry run (list all files, no move)", "Move files (remove from source)", "Backup (copy, keep originals)", "Cancel")
 $mSel   = 0
 $mTop   = [Console]::CursorTop
@@ -245,6 +246,52 @@ if ($errors.Count -gt 0) {
     $errors | ForEach-Object { Write-Host $_ -ForegroundColor Red }
 }
 Write-Host "  $rule" -ForegroundColor DarkCyan
+
+# -- Update project_info.json -------------------------------------------------
+if ($done -gt 0) {
+    Write-Host ""
+    Write-Host "  Updating project_info.json..." -ForegroundColor DarkCyan
+
+    # Collect unique project folders from successfully processed files
+    $affectedProjects = @{}
+    foreach ($f in $rawFiles) {
+        $rel    = $f.FullName.Substring($root.Length)
+        $target = Join-Path $archiveDest $rel
+        $existed = Test-Path $target
+        # Only tag projects where at least one file was actually moved/copied
+        # Walk up from file's folder to find project_info.json
+        $dir = $f.DirectoryName
+        while ($dir -and $dir.Length -gt $root.Length) {
+            $jsonPath = Join-Path $dir "project_info.json"
+            if (Test-Path $jsonPath) {
+                $affectedProjects[$jsonPath] = $true
+                break
+            }
+            $dir = Split-Path $dir -Parent
+        }
+    }
+
+    $archiveMode = if ($isBackup) { "Backup" } else { "Move" }
+    $archiveDate = (Get-Date -Format "yyyy-MM-dd")
+    $tagged = 0
+
+    foreach ($jsonPath in $affectedProjects.Keys) {
+        try {
+            $info = Get-Content $jsonPath -Raw | ConvertFrom-Json
+            $info | Add-Member -NotePropertyName "RawArchived"    -NotePropertyValue $true          -Force
+            $info | Add-Member -NotePropertyName "RawArchiveMode" -NotePropertyValue $archiveMode   -Force
+            $info | Add-Member -NotePropertyName "RawArchiveDest" -NotePropertyValue $archiveDest   -Force
+            $info | Add-Member -NotePropertyName "RawArchiveDate" -NotePropertyValue $archiveDate   -Force
+            $info | ConvertTo-Json -Depth 5 | Out-File $jsonPath -Encoding UTF8
+            $tagged++
+            Write-Host "  Tagged: $jsonPath" -ForegroundColor DarkGray
+        } catch {
+            Write-Host "  Could not update: $jsonPath" -ForegroundColor Yellow
+        }
+    }
+
+    Write-Host "  $tagged project(s) updated." -ForegroundColor Cyan
+}
 
 # -- Navigation ---------------------------------------------------------------
 $nItems = @("Back to main menu", "Exit")
