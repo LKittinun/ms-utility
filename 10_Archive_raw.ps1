@@ -50,7 +50,17 @@ if (-not (Test-Path $root)) {
     Clear-Host; .\Main.ps1; return
 }
 
-# -- Archive destination ------------------------------------------------------
+# -- Source / destination -----------------------------------------------------
+Write-Host "  Source root : $root" -ForegroundColor DarkGray
+$sourceInput = Read-Host "  Source subfolder (blank = all projects)"
+$source      = if ($sourceInput -ne "") { Join-Path $root $sourceInput.Trim("\") } else { $root }
+if (-not (Test-Path $source)) {
+    Write-Host "  [ERROR] Path not found: $source" -ForegroundColor Red
+    Write-Host ""
+    pause
+    Clear-Host; .\Main.ps1; return
+}
+Write-Host "  Source : $source" -ForegroundColor DarkGray
 $archiveDest = Read-Host "  Archive destination (e.g. E:\Raw_Archive)"
 if ($archiveDest -eq "") {
     Write-Host "  Cancelled." -ForegroundColor DarkYellow
@@ -63,10 +73,10 @@ Write-Host ""
 Write-Host "  Scanning for .raw files..." -ForegroundColor DarkCyan
 
 # -- Scan ---------------------------------------------------------------------
-$rawFiles = @(Get-ChildItem -Path "$root\*" -Recurse -Filter "*.raw" -File)
+$rawFiles = @(Get-ChildItem -Path $source -Recurse -Filter "*.raw" -File)
 
 if ($rawFiles.Count -eq 0) {
-    Write-Host "  No .raw files found under $root" -ForegroundColor Yellow
+    Write-Host "  No .raw files found under $source" -ForegroundColor Yellow
     Write-Host ""
     pause
     Clear-Host; .\Main.ps1; return
@@ -77,7 +87,7 @@ $totalSizeGB    = [math]::Round($totalSizeBytes / 1GB, 2)
 
 Write-Host "  Found $($rawFiles.Count) .raw file(s)  ($totalSizeGB GB)" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Source : $root" -ForegroundColor DarkGray
+Write-Host "  Source : $source" -ForegroundColor DarkGray
 Write-Host "  Dest   : $archiveDest" -ForegroundColor DarkGray
 Write-Host ""
 
@@ -123,7 +133,7 @@ if ($mSel -eq 0) {
     Write-Host "  Dry run - files that would be moved/copied:" -ForegroundColor Cyan
     Write-Host ""
     $rawFiles | ForEach-Object {
-        $rel    = $_.FullName.Substring($root.Length)
+        $rel    = $_.FullName.Substring($source.Length)
         $target = Join-Path $archiveDest $rel
         $sizeMB = [math]::Round($_.Length / 1MB, 1)
         Write-Host "    $($_.Name)  ($sizeMB MB)" -ForegroundColor Gray
@@ -166,15 +176,17 @@ $opVerb   = if ($isBackup) { "Backup" } else { "Move" }
 
 # -- Conflict check -----------------------------------------------------------
 Write-Host "  Checking for existing files at destination..." -ForegroundColor DarkCyan
-$conflicts = @($rawFiles | Where-Object {
-    $rel    = $_.FullName.Substring($root.Length)
+$existsAtDest = @{}
+foreach ($f in $rawFiles) {
+    $rel    = $f.FullName.Substring($source.Length)
     $target = Join-Path $archiveDest $rel
-    Test-Path $target
-})
+    if (Test-Path $target) { $existsAtDest[$f.FullName] = $true }
+}
+$conflicts = $existsAtDest.Count
 
 $overwrite = $false
-if ($conflicts.Count -gt 0) {
-    Write-Host "  $($conflicts.Count) file(s) already exist at destination." -ForegroundColor Yellow
+if ($conflicts -gt 0) {
+    Write-Host "  $conflicts file(s) already exist at destination." -ForegroundColor Yellow
     Write-Host ""
     $cfItems = @("Skip existing files", "Overwrite existing files")
     $cfSel   = 0
@@ -201,10 +213,11 @@ if ($conflicts.Count -gt 0) {
     $overwrite = ($cfSel -eq 1)
 }
 
-$done   = 0
-$skipped = 0
-$failed = 0
-$errors = @()
+$done      = 0
+$skipped   = 0
+$failed    = 0
+$errors    = @()
+$movedFiles = [System.Collections.Generic.List[object]]::new()
 
 Write-Host "  $rule" -ForegroundColor DarkCyan
 Write-Host "  $opVerb - $($rawFiles.Count) file(s)  $totalSizeGB GB" -ForegroundColor Cyan
@@ -212,11 +225,11 @@ Write-Host "  $rule" -ForegroundColor DarkCyan
 Write-Host ""
 
 foreach ($f in $rawFiles) {
-    $rel       = $f.FullName.Substring($root.Length)
+    $rel       = $f.FullName.Substring($source.Length)
     $target    = Join-Path $archiveDest $rel
     $targetDir = Split-Path $target -Parent
 
-    if ((Test-Path $target) -and -not $overwrite) {
+    if ($existsAtDest.ContainsKey($f.FullName) -and -not $overwrite) {
         $skipped++
         Write-Host "  Skipped: $($f.Name)" -ForegroundColor DarkGray
         continue
@@ -230,6 +243,7 @@ foreach ($f in $rawFiles) {
             Move-Item -Path $f.FullName -Destination $target -Force -ErrorAction Stop
         }
         $done++
+        $movedFiles.Add($f)
         Write-Host "  ${opLabel}: $($f.Name)" -ForegroundColor DarkGray
     } catch {
         $failed++
@@ -252,14 +266,9 @@ if ($done -gt 0) {
     Write-Host ""
     Write-Host "  Updating project_info.json..." -ForegroundColor DarkCyan
 
-    # Collect unique project folders from successfully processed files
+    # Collect unique project folders from actually moved/copied files only
     $affectedProjects = @{}
-    foreach ($f in $rawFiles) {
-        $rel    = $f.FullName.Substring($root.Length)
-        $target = Join-Path $archiveDest $rel
-        $existed = Test-Path $target
-        # Only tag projects where at least one file was actually moved/copied
-        # Walk up from file's folder to find project_info.json
+    foreach ($f in $movedFiles) {
         $dir = $f.DirectoryName
         while ($dir -and $dir.Length -gt $root.Length) {
             $jsonPath = Join-Path $dir "project_info.json"
