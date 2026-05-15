@@ -20,9 +20,10 @@ $entries = @(
     @{ Type = "item"; Label = "[8]  Contaminant check             (mzsniffer)"; Script = ".\08_Contaminant_check.ps1"; Color = "White" }
     @{ Type = "item"; Label = "[9]  Clear method files            (*sld *meth)"; Script = ".\09_Clear_files.ps1";      Color = "White" }
     @{ Type = "sep";  Label = "  Admin only"                                                                          }
-    @{ Type = "item"; Label = "[10] Repair project order";         Script = ".\10_Repair_project_order.ps1";     Color = "DarkGray"  }
-    @{ Type = "item"; Label = "[11] Backfill existing column";     Script = ".\11_Backfill_column.ps1";          Color = "DarkGray"  }
-    @{ Type = "item"; Label = "[12] Sync from overview CSV";       Script = ".\12_Sync_from_overview.ps1";       Color = "DarkGray"  }
+    @{ Type = "item"; Label = "[10] Archive raw files             (external HDD)"; Script = ".\10_Archive_raw.ps1";   Color = "DarkGray" }
+    @{ Type = "item"; Label = "[11] Repair project order";         Script = ".\11_Repair_project_order.ps1";     Color = "DarkGray"  }
+    @{ Type = "item"; Label = "[12] Backfill existing column";     Script = ".\12_Backfill_column.ps1";          Color = "DarkGray"  }
+    @{ Type = "item"; Label = "[13] Sync from overview CSV";       Script = ".\13_Sync_from_overview.ps1";       Color = "DarkGray"  }
     @{ Type = "sep";  Label = "  Settings"                                                                          }
     @{ Type = "item"; Label = "Set root directory";              Script = "__SET_ROOT__";                Color = "DarkGray"   }
     @{ Type = "sep";  Label = ""                                                                                      }

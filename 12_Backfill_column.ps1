@@ -5,7 +5,7 @@ $prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history")
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
-Write-Host "  [11]  Backfill existing column" -ForegroundColor Cyan
+Write-Host "  [12]  Backfill existing column" -ForegroundColor Cyan
 Write-Host "        Renames column folder with date prefix," -ForegroundColor DarkCyan
 Write-Host "        generates project_info.json and column_log.csv" -ForegroundColor DarkCyan
 Write-Host "  $border" -ForegroundColor DarkCyan
@@ -324,7 +324,7 @@ Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host "  Done!  $($projects.Count) project(s) processed." -ForegroundColor Cyan
 Write-Host "  $rule" -ForegroundColor DarkCyan
 Write-Host "  TrapColumn is blank for backfilled projects." -ForegroundColor DarkGray
-Write-Host "  Use [10] Repair project order to fix ordering" -ForegroundColor DarkGray
+Write-Host "  Use [11] Repair project order to fix ordering" -ForegroundColor DarkGray
 Write-Host "  or edit project_info.json files directly." -ForegroundColor DarkGray
 Write-Host "  $border" -ForegroundColor DarkCyan
 
