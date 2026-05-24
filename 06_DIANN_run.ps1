@@ -376,7 +376,7 @@ if ($exitCode -ne 0) {
 }
 
 # -- Navigation ---------------------------------------------------------------
-$nItems  = @("Open Result folder", "Run analysis report (next step)", "Re-run same folder", "Back to main menu")
+$nItems  = @("Open Result folder", "Re-run same folder", "Run analysis report (next step)", "Back to main menu")
 $nColors = @("Cyan", "Cyan", "Cyan", "Cyan")
 $nSel    = 0
 Write-Host ""
@@ -400,9 +400,9 @@ while ($true) {
         [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $nColors[$p] -NoNewline
         [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
     } elseif ($k.Key -eq [ConsoleKey]::Enter) {
-        if ($nSel -eq 0)      { Start-Process explorer.exe $resultDir; return }
-        elseif ($nSel -eq 1)  { Clear-Host; & ".\07_Report_generator.ps1"; return }
-        elseif ($nSel -eq 2)  { continue runLoop }
+        if ($nSel -eq 0)      { Start-Process explorer.exe $resultDir }
+        elseif ($nSel -eq 1)  { continue runLoop }
+        elseif ($nSel -eq 2)  { Clear-Host; & ".\07_Report_generator.ps1"; return }
         else                  { Clear-Host; .\Main.ps1; return }
     } elseif ($k.Key -eq [ConsoleKey]::Escape) {
         Clear-Host; .\Main.ps1; return
