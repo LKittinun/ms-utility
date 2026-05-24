@@ -546,10 +546,10 @@
     <div class="step-num">5</div>
     <div class="step-body">
       <strong>Command preview</strong>
-      The full DIA-NN command is summarised using the defaults from <code>diann_config.json</code>, showing the executable, number of input files, library, output path, thread count, mass accuracies, and MBR status. Three options are available:
+      The full DIA-NN command is summarised using the defaults from <code>diann_config.json</code>, showing the executable, number of input files, library, output path, thread count, mass accuracies, MBR status, and file order. Three options are available:
       <ul>
         <li><strong>Run DIA-NN</strong> - execute immediately with the displayed settings</li>
-        <li><strong>Edit parameters</strong> - adjust the four variable parameters, then the preview redraws with the updated values</li>
+        <li><strong>Edit parameters</strong> - adjust the five variable parameters, then the preview redraws with the updated values</li>
         <li><strong>Back to main menu</strong> - cancel and return</li>
       </ul>
       When you select <em>Edit parameters</em>, press <kbd>Enter</kbd> on any prompt to keep the current value:
@@ -558,6 +558,7 @@
         <li><strong>Mass accuracy MS1 (ppm)</strong> - typically 5-10</li>
         <li><strong>Threads</strong> - number of CPU cores to use</li>
         <li><strong>Match between runs (MBR) [Y/N]</strong> - enables two-pass analysis (<code>--reanalyse --rt-profiling</code>); on by default</li>
+        <li><strong>File order [N]ame / [D]ate acquired</strong> - controls the order in which <code>--f</code> files are passed to DIA-NN; <em>N</em> sorts alphabetically by filename (default), <em>D</em> sorts by acquisition date oldest first</li>
       </ul>
     </div>
   </div>
@@ -606,11 +607,12 @@
 </table>
 
 <h3>After the run</h3>
-<p>Three options are available once DIA-NN finishes:</p>
+<p>Four options are available once DIA-NN finishes:</p>
 <table>
   <tr><th>Option</th><th>Action</th></tr>
   <tr><td>Open Result folder</td><td>Opens the <code>Result\</code> folder in Windows Explorer</td></tr>
   <tr><td>Run analysis report (next step)</td><td>Launches script [7] directly to generate the Excel analysis report</td></tr>
+  <tr><td>Re-run same folder</td><td>Repeats the run cycle for the same folder without re-asking the project path - re-checks for locked and <code>.quant</code> files, then shows the command preview again. Parameters from the previous run are preserved.</td></tr>
   <tr><td>Back to main menu</td><td>Returns to the main menu</td></tr>
 </table>
 
