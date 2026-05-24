@@ -160,6 +160,7 @@ $massAcc    = [int]$diannCfg.MassAcc
 $massAccMs1 = [int]$diannCfg.MassAccMs1
 $threads    = [int]$diannCfg.Threads
 $mbr        = $true
+$sortByDate = $false
 
 # -- Run loop (Re-run re-uses $targetFolder without re-asking the folder) -----
 :runLoop while ($true) {
@@ -258,8 +259,9 @@ $outLibParquet = Join-Path $resultDir "report-lib.parquet"
 
 # -- Preview / confirm loop ---------------------------------------------------
 :previewLoop while ($true) {
+    $orderedFiles = if ($sortByDate) { @($rawFiles | Sort-Object LastWriteTime) } else { @($rawFiles | Sort-Object Name) }
     $diannArgs = @()
-    foreach ($f in $rawFiles) { $diannArgs += @("--f", $f.FullName) }
+    foreach ($f in $orderedFiles) { $diannArgs += @("--f", $f.FullName) }
     $diannArgs += @(
         "--lib",                $diannCfg.Library,
         "--threads",            "$threads",
@@ -298,7 +300,8 @@ $outLibParquet = Join-Path $resultDir "report-lib.parquet"
     Write-Host "  $rule" -ForegroundColor DarkCyan
     Write-Host "  Command preview:" -ForegroundColor Cyan
     Write-Host "    $($diannCfg.DiannExe)" -ForegroundColor White
-    Write-Host "    --f  [$($rawFiles.Count) raw file(s)]" -ForegroundColor DarkGray
+    $sortText = if ($sortByDate) { "acquisition date" } else { "name" }
+    Write-Host "    --f  [$($rawFiles.Count) raw file(s), sorted by $sortText]" -ForegroundColor DarkGray
     Write-Host "    --lib $($diannCfg.Library)" -ForegroundColor DarkGray
     Write-Host "    --out $outParquet" -ForegroundColor DarkGray
     Write-Host "    --threads $threads  --mass-acc $massAcc  --mass-acc-ms1 $massAccMs1" -ForegroundColor DarkGray
@@ -334,12 +337,15 @@ $outLibParquet = Join-Path $resultDir "report-lib.parquet"
                 $inMa  = Read-Host "  Mass accuracy MS2 ppm    (current: $massAcc)"
                 $inMs1 = Read-Host "  Mass accuracy MS1 ppm    (current: $massAccMs1)"
                 $inThr = Read-Host "  Threads                  (current: $threads)"
-                $mbrCur = if ($mbr) { "Y" } else { "N" }
-                $inMbr = Read-Host "  Match between runs (MBR) (current: $mbrCur) [Y/N]"
-                if ($inMa  -ne "") { $massAcc    = [int]$inMa  }
-                if ($inMs1 -ne "") { $massAccMs1 = [int]$inMs1 }
-                if ($inThr -ne "") { $threads    = [int]$inThr }
-                if ($inMbr -ne "") { $mbr = ($inMbr -match '^[Yy]') }
+                $mbrCur  = if ($mbr)        { "Y" } else { "N" }
+                $sortCur = if ($sortByDate) { "D" } else { "N" }
+                $inMbr  = Read-Host "  Match between runs (MBR) (current: $mbrCur) [Y/N]"
+                $inSort = Read-Host "  File order               (current: $sortCur) [N]ame / [D]ate acquired"
+                if ($inMa   -ne "") { $massAcc    = [int]$inMa  }
+                if ($inMs1  -ne "") { $massAccMs1 = [int]$inMs1 }
+                if ($inThr  -ne "") { $threads    = [int]$inThr }
+                if ($inMbr  -ne "") { $mbr        = ($inMbr  -match '^[Yy]') }
+                if ($inSort -ne "") { $sortByDate = ($inSort -match '^[Dd]') }
                 Write-Host ""
                 continue previewLoop
             }
