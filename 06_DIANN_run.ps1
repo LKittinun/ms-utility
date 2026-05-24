@@ -340,25 +340,39 @@ if ($exitCode -ne 0) {
 }
 
 # -- Navigation ---------------------------------------------------------------
-$nItems = @("Back to main menu", "Exit")
-$nSel   = 0
+$nItems  = @("Open Result folder", "Run analysis report (next step)", "Back to main menu")
+$nColors = @("Cyan", "Cyan", "Cyan")
+$nSel    = 0
 Write-Host ""
 Write-Host "  $rule" -ForegroundColor DarkCyan
 $nTop = [Console]::CursorTop
-[Console]::SetCursorPosition(0, $nTop)
-Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-[Console]::SetCursorPosition(0, $nTop + 1)
-Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-[Console]::SetCursorPosition(0, $nTop + 2)
+for ($ni = 0; $ni -lt $nItems.Count; $ni++) {
+    [Console]::SetCursorPosition(0, $nTop + $ni)
+    if ($ni -eq 0) {
+        Write-Host ("  > " + $nItems[$ni]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
+    } else {
+        Write-Host ("    " + $nItems[$ni]).PadRight($w + 4) -ForegroundColor $nColors[$ni] -NoNewline
+    }
+}
+[Console]::SetCursorPosition(0, $nTop + $nItems.Count)
 while ($true) {
     $k = [Console]::ReadKey($true)
     if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $nSel; $nSel = 1 - $nSel
-        [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
+        $p = $nSel
+        if ($k.Key -eq [ConsoleKey]::UpArrow) { $nSel = ($nSel - 1 + $nItems.Count) % $nItems.Count }
+        else { $nSel = ($nSel + 1) % $nItems.Count }
+        [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $nColors[$p] -NoNewline
         [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-        if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-        else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
+    } elseif ($k.Key -eq [ConsoleKey]::Enter) {
+        if ($nSel -eq 0) {
+            Start-Process explorer.exe $resultDir
+        } elseif ($nSel -eq 1) {
+            Clear-Host; & ".\07_Report_generator.ps1"
+        } else {
+            Clear-Host; .\Main.ps1
+        }
         return
+    } elseif ($k.Key -eq [ConsoleKey]::Escape) {
+        Clear-Host; .\Main.ps1; return
     }
 }
