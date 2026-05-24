@@ -231,92 +231,107 @@ if ($quantFiles.Count -gt 0) {
     Write-Host ""
 }
 
-# -- Parameters ---------------------------------------------------------------
-Write-Host "  DIA-NN parameters (press Enter to keep defaults):" -ForegroundColor Cyan
-$inMa  = Read-Host "  Mass accuracy MS2 ppm    (default $($diannCfg.MassAcc))"
-$inMs1 = Read-Host "  Mass accuracy MS1 ppm    (default $($diannCfg.MassAccMs1))"
-$inThr = Read-Host "  Threads                  (default $($diannCfg.Threads))"
-Write-Host ""
+# -- Defaults and output paths --------------------------------------------------
+$massAcc    = [int]$diannCfg.MassAcc
+$massAccMs1 = [int]$diannCfg.MassAccMs1
+$threads    = [int]$diannCfg.Threads
+$mbr        = $true
 
-$massAcc    = if ($inMa  -ne "") { [int]$inMa  } else { [int]$diannCfg.MassAcc    }
-$massAccMs1 = if ($inMs1 -ne "") { [int]$inMs1 } else { [int]$diannCfg.MassAccMs1 }
-$threads    = if ($inThr -ne "") { [int]$inThr } else { [int]$diannCfg.Threads    }
-
-# -- Output paths -------------------------------------------------------------
 $resultDir     = Join-Path $targetFolder "Result"
 $outParquet    = Join-Path $resultDir "report.parquet"
 $outLibParquet = Join-Path $resultDir "report-lib.parquet"
 
-# -- Build argument array -----------------------------------------------------
-$diannArgs = @()
-foreach ($f in $rawFiles) { $diannArgs += @("--f", $f.FullName) }
-$diannArgs += @(
-    "--lib",                $diannCfg.Library,
-    "--threads",            "$threads",
-    "--verbose",            "1",
-    "--out",                $outParquet,
-    "--qvalue",             "0.01",
-    "--matrices",
-    "--out-lib",            $outLibParquet,
-    "--gen-spec-lib",
-    "--xic",
-    "--fasta",              $diannCfg.ContamFasta,
-    "--cont-quant-exclude", "cRAP-",
-    "--fasta",              $diannCfg.MainFasta,
-    "--met-excision",
-    "--min-pep-len",        "7",
-    "--max-pep-len",        "30",
-    "--min-pr-mz",          "400",
-    "--max-pr-mz",          "1000",
-    "--min-pr-charge",      "1",
-    "--max-pr-charge",      "4",
-    "--min-fr-mz",          "145",
-    "--max-fr-mz",          "1450",
-    "--cut",                "K*,R*",
-    "--missed-cleavages",   "1",
-    "--unimod4",
-    "--mass-acc",           "$massAcc",
-    "--mass-acc-ms1",       "$massAccMs1",
-    "--reanalyse",
-    "--rt-profiling"
-)
-if ($useQuant) { $diannArgs += "--use-quant" }
+# -- Preview / confirm loop -----------------------------------------------------
+:previewLoop while ($true) {
+    $diannArgs = @()
+    foreach ($f in $rawFiles) { $diannArgs += @("--f", $f.FullName) }
+    $diannArgs += @(
+        "--lib",                $diannCfg.Library,
+        "--threads",            "$threads",
+        "--verbose",            "1",
+        "--out",                $outParquet,
+        "--qvalue",             "0.01",
+        "--matrices",
+        "--out-lib",            $outLibParquet,
+        "--gen-spec-lib",
+        "--xic",
+        "--fasta",              $diannCfg.ContamFasta,
+        "--cont-quant-exclude", "cRAP-",
+        "--fasta",              $diannCfg.MainFasta,
+        "--met-excision",
+        "--min-pep-len",        "7",
+        "--max-pep-len",        "30",
+        "--min-pr-mz",          "400",
+        "--max-pr-mz",          "1000",
+        "--min-pr-charge",      "1",
+        "--max-pr-charge",      "4",
+        "--min-fr-mz",          "145",
+        "--max-fr-mz",          "1450",
+        "--cut",                "K*,R*",
+        "--missed-cleavages",   "1",
+        "--unimod4",
+        "--mass-acc",           "$massAcc",
+        "--mass-acc-ms1",       "$massAccMs1"
+    )
+    if ($mbr)      { $diannArgs += @("--reanalyse", "--rt-profiling") }
+    if ($useQuant) { $diannArgs += "--use-quant" }
 
-# -- Command preview ----------------------------------------------------------
-$quFlags = if ($useQuant) { "--use-quant --reanalyse --rt-profiling" } else { "--reanalyse --rt-profiling" }
-Write-Host "  $rule" -ForegroundColor DarkCyan
-Write-Host "  Command preview:" -ForegroundColor Cyan
-Write-Host "    $($diannCfg.DiannExe)" -ForegroundColor White
-Write-Host "    --f  [$($rawFiles.Count) raw file(s)]" -ForegroundColor DarkGray
-Write-Host "    --lib $($diannCfg.Library)" -ForegroundColor DarkGray
-Write-Host "    --out $outParquet" -ForegroundColor DarkGray
-Write-Host "    --threads $threads  --mass-acc $massAcc  --mass-acc-ms1 $massAccMs1" -ForegroundColor DarkGray
-Write-Host "    $quFlags  (plus standard flags)" -ForegroundColor DarkGray
-Write-Host "  $rule" -ForegroundColor DarkCyan
-Write-Host ""
+    $mbrText = if ($mbr) { "yes" } else { "no" }
+    $mbrPart = if ($mbr) { "--reanalyse --rt-profiling" } else { "(MBR disabled)" }
+    $quPart  = if ($useQuant) { " --use-quant" } else { "" }
+    Write-Host ""
+    Write-Host "  $rule" -ForegroundColor DarkCyan
+    Write-Host "  Command preview:" -ForegroundColor Cyan
+    Write-Host "    $($diannCfg.DiannExe)" -ForegroundColor White
+    Write-Host "    --f  [$($rawFiles.Count) raw file(s)]" -ForegroundColor DarkGray
+    Write-Host "    --lib $($diannCfg.Library)" -ForegroundColor DarkGray
+    Write-Host "    --out $outParquet" -ForegroundColor DarkGray
+    Write-Host "    --threads $threads  --mass-acc $massAcc  --mass-acc-ms1 $massAccMs1" -ForegroundColor DarkGray
+    Write-Host "    MBR: $mbrText  $mbrPart$quPart  (plus standard flags)" -ForegroundColor DarkGray
+    Write-Host "  $rule" -ForegroundColor DarkCyan
+    Write-Host ""
 
-# -- Second confirm -----------------------------------------------------------
-$rItems = @("Run DIA-NN", "Back to main menu")
-$rSel   = 0
-$rTop   = [Console]::CursorTop
-[Console]::SetCursorPosition(0, $rTop)
-Write-Host ("  > " + $rItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-[Console]::SetCursorPosition(0, $rTop + 1)
-Write-Host ("    " + $rItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
-[Console]::SetCursorPosition(0, $rTop + 2)
-:runLoop while ($true) {
-    $rk = [Console]::ReadKey($true)
-    if ($rk.Key -eq [ConsoleKey]::UpArrow -or $rk.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $rSel; $rSel = 1 - $rSel
-        [Console]::SetCursorPosition(0, $rTop + $p)
-        Write-Host ("    " + $rItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkCyan" }) -NoNewline
-        [Console]::SetCursorPosition(0, $rTop + $rSel)
-        Write-Host ("  > " + $rItems[$rSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } elseif ($rk.Key -eq [ConsoleKey]::Enter) {
-        if ($rSel -eq 1) { Clear-Host; .\Main.ps1; return }
-        break runLoop
-    } elseif ($rk.Key -eq [ConsoleKey]::Escape) {
-        Clear-Host; .\Main.ps1; return
+    $pItems = @("Run DIA-NN", "Edit parameters", "Back to main menu")
+    $pSel   = 0
+    $pTop   = [Console]::CursorTop
+    for ($pi = 0; $pi -lt $pItems.Count; $pi++) {
+        [Console]::SetCursorPosition(0, $pTop + $pi)
+        if ($pi -eq 0) {
+            Write-Host ("  > " + $pItems[$pi]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
+        } else {
+            Write-Host ("    " + $pItems[$pi]).PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
+        }
+    }
+    [Console]::SetCursorPosition(0, $pTop + $pItems.Count)
+
+    :pickerLoop while ($true) {
+        $pk = [Console]::ReadKey($true)
+        if ($pk.Key -eq [ConsoleKey]::UpArrow -or $pk.Key -eq [ConsoleKey]::DownArrow) {
+            $pp = $pSel
+            if ($pk.Key -eq [ConsoleKey]::UpArrow) { $pSel = ($pSel - 1 + $pItems.Count) % $pItems.Count }
+            else { $pSel = ($pSel + 1) % $pItems.Count }
+            [Console]::SetCursorPosition(0, $pTop + $pp);   Write-Host ("    " + $pItems[$pp]).PadRight($w + 4)   -ForegroundColor DarkCyan -NoNewline
+            [Console]::SetCursorPosition(0, $pTop + $pSel); Write-Host ("  > " + $pItems[$pSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
+        } elseif ($pk.Key -eq [ConsoleKey]::Enter) {
+            if ($pSel -eq 0) { break previewLoop }
+            if ($pSel -eq 1) {
+                Write-Host ""
+                $inMa  = Read-Host "  Mass accuracy MS2 ppm    (current: $massAcc)"
+                $inMs1 = Read-Host "  Mass accuracy MS1 ppm    (current: $massAccMs1)"
+                $inThr = Read-Host "  Threads                  (current: $threads)"
+                $mbrCur = if ($mbr) { "Y" } else { "N" }
+                $inMbr = Read-Host "  Match between runs (MBR) (current: $mbrCur) [Y/N]"
+                if ($inMa  -ne "") { $massAcc    = [int]$inMa  }
+                if ($inMs1 -ne "") { $massAccMs1 = [int]$inMs1 }
+                if ($inThr -ne "") { $threads    = [int]$inThr }
+                if ($inMbr -ne "") { $mbr = ($inMbr -match '^[Yy]') }
+                Write-Host ""
+                continue previewLoop
+            }
+            if ($pSel -eq 2) { Clear-Host; .\Main.ps1; return }
+        } elseif ($pk.Key -eq [ConsoleKey]::Escape) {
+            Clear-Host; .\Main.ps1; return
+        }
     }
 }
 
