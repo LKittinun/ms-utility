@@ -158,12 +158,68 @@ if ($null -eq $targetFolder) {
 # -- Collect .raw files -------------------------------------------------------
 $rawFiles = @(Get-ChildItem -Path $targetFolder -Filter *.raw -File | Sort-Object Name)
 
+# -- Check for locked files (still being acquired) ----------------------------
+$lockedFiles = @($rawFiles | Where-Object {
+    try {
+        $fs = [System.IO.File]::Open($_.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::None)
+        $fs.Close(); $fs.Dispose(); $false
+    } catch { $true }
+})
+
 Write-Host ""
 Write-Host "  $rule" -ForegroundColor DarkCyan
 Write-Host "  Folder : $(Split-Path $targetFolder -Leaf)" -ForegroundColor Cyan
 Write-Host "  Raw files ($($rawFiles.Count)):" -ForegroundColor White
-$rawFiles | ForEach-Object { Write-Host "    $($_.Name)" -ForegroundColor DarkGray }
+$rawFiles | ForEach-Object {
+    $isLocked = $lockedFiles.FullName -contains $_.FullName
+    if ($isLocked) {
+        Write-Host "    $($_.Name)  [LOCKED - still acquiring]" -ForegroundColor Yellow
+    } else {
+        Write-Host "    $($_.Name)" -ForegroundColor DarkGray
+    }
+}
 Write-Host ""
+
+if ($lockedFiles.Count -gt 0) {
+    Write-Host "  WARNING: $($lockedFiles.Count) file(s) are still locked (acquisition in progress)." -ForegroundColor Yellow
+    $skipAnswer = Read-Host "  Skip locked files and continue with the rest? [Y/N]"
+    if ($skipAnswer -match '^[Yy]') {
+        $rawFiles = @($rawFiles | Where-Object { $lockedFiles.FullName -notcontains $_.FullName })
+        Write-Host "  Continuing with $($rawFiles.Count) file(s)." -ForegroundColor Cyan
+        Write-Host ""
+        if ($rawFiles.Count -eq 0) {
+            Write-Host "  No files remaining to process." -ForegroundColor Red
+            $targetFolder = $null
+        }
+    } else {
+        $targetFolder = $null
+    }
+}
+
+if ($null -eq $targetFolder) {
+    $nItems = @("Back to main menu", "Exit")
+    $nSel   = 0
+    Write-Host ""
+    Write-Host "  $rule" -ForegroundColor DarkCyan
+    $nTop = [Console]::CursorTop
+    [Console]::SetCursorPosition(0, $nTop)
+    Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
+    [Console]::SetCursorPosition(0, $nTop + 1)
+    Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
+    [Console]::SetCursorPosition(0, $nTop + 2)
+    while ($true) {
+        $k = [Console]::ReadKey($true)
+        if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
+            $p = $nSel; $nSel = 1 - $nSel
+            [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
+            [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
+        } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
+            if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
+            else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
+            return
+        }
+    }
+}
 
 # -- Check for existing .quant files ------------------------------------------
 $quantFiles = @($rawFiles | Where-Object { Test-Path ($_.FullName + ".quant") })
