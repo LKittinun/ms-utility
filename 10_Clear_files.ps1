@@ -4,10 +4,7 @@ $rule   = "-" * $w
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
-Write-Host "   [6]  Analysis report               (Excel)" -ForegroundColor Cyan
-Write-Host "        Analysis_Report.xlsx  (5 sheets)" -ForegroundColor DarkCyan
-Write-Host "        Project Overview  |  Raw Files  |  Run Statistics" -ForegroundColor DarkCyan
-Write-Host "        Summary Statistics  |  Protein Groups (pg_matrix)" -ForegroundColor DarkCyan
+Write-Host "   [10] Clear method files            (*sld *meth)" -ForegroundColor Cyan
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host ""
 
@@ -37,56 +34,22 @@ Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoN
 }
 Write-Host ""
 
-$first_path = Get-Location
-$path = Read-Host "Insert project directory, leave blank for current location"
-if ($path -eq "") { $path = $first_path.Path }
+$path = Read-Host "Insert directory, leave blank for a current location"
+if ($path -eq "") { $path = (Get-Location).Path }
+$files = Get-ChildItem -Path $path -Recurse -Include "*.sld", "*.meth" -File
 
-# Detect subfolders that contain a Result\ subfolder (sample type folders)
-$subfolders = Get-ChildItem -Path $path -Directory |
-    Where-Object { Test-Path (Join-Path $_.FullName "Result") }
-
-if ($subfolders.Count -eq 0) {
-    # No subfolders with Result\ found - treat $path itself as the project folder
-    $subfolders = @([PSCustomObject]@{ FullName = $path; Name = Split-Path $path -Leaf })
-    Write-Host "  No subfolders with Result\ found - running on: $path" -ForegroundColor Yellow
+if ($files.Count -eq 0) {
+    Write-Host "  No *sld and *meth files found" -ForegroundColor Yellow
 } else {
-    Write-Host "  Found $($subfolders.Count) subfolder(s):" -ForegroundColor Cyan
-    $subfolders | ForEach-Object { Write-Host "    $($_.Name)" -ForegroundColor White }
+    Write-Host "  These files will be removed:" -ForegroundColor Yellow
+    $files | ForEach-Object { Write-Host "    $($_.FullName)" }
     Write-Host ""
-}
-
-# Locate Rscript.exe
-$rscript = $null
-try { $null = & Rscript --version 2>&1; $rscript = "Rscript" } catch {}
-if (-not $rscript) {
-    $rBase = "C:\Program Files\R"
-    if (Test-Path $rBase) {
-        $candidates = Get-ChildItem -Path $rBase -Directory |
-                      Sort-Object Name -Descending |
-                      ForEach-Object { Join-Path $_.FullName "bin\Rscript.exe" } |
-                      Where-Object { Test-Path $_ }
-        if ($candidates) { $rscript = $candidates[0] }
-    }
-}
-
-if (-not $rscript) {
-    Write-Host "ERROR: Rscript.exe not found. Install R from https://cran.r-project.org/" -ForegroundColor Red
-} else {
-    Write-Host "Using R: $rscript" -ForegroundColor Cyan
-    foreach ($sf in $subfolders) {
-        $sfPath = $sf.FullName.Replace("\", "/")
-        Write-Host ""
-        Write-Host "  $rule" -ForegroundColor DarkCyan
-        Write-Host "  Processing: $($sf.Name)" -ForegroundColor Cyan
-        Write-Host "  $rule" -ForegroundColor DarkCyan
-        try {
-            & $rscript ".\R\generate_report.R" $sfPath 2>&1 | ForEach-Object { "$_" }
-        } catch {
-            Write-Host "  Unexpected error during R execution: $_" -ForegroundColor Red
-        }
-        if ($LASTEXITCODE -ne 0) {
-            Write-Host "  R script exited with code $LASTEXITCODE -- check output above for details." -ForegroundColor Red
-        }
+    $confirm = Read-Host "  Confirm removal? y = yes"
+    if ($confirm -eq "y") {
+        Remove-Item $files
+        Write-Host "  All files removed." -ForegroundColor Green
+    } else {
+        Write-Host "  Cancelled." -ForegroundColor DarkYellow
     }
 }
 

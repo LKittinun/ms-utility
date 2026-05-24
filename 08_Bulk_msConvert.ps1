@@ -4,7 +4,7 @@ $rule   = "-" * $w
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
-Write-Host "   [7]  Bulk convert .raw to mzML     (msConvert)" -ForegroundColor Cyan
+Write-Host "   [8]  Bulk convert .raw to mzML     (msConvert)" -ForegroundColor Cyan
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host ""
 

@@ -5,9 +5,9 @@ $prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history")
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
-Write-Host "  [11]  Repair project order" -ForegroundColor Cyan
-Write-Host "        Re-numbers projects by creation date" -ForegroundColor DarkCyan
-Write-Host "        and rebuilds column_log.csv" -ForegroundColor DarkCyan
+Write-Host "  [13]  Backfill existing column" -ForegroundColor Cyan
+Write-Host "        Renames column folder with date prefix," -ForegroundColor DarkCyan
+Write-Host "        generates project_info.json and column_log.csv" -ForegroundColor DarkCyan
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host ""
 
@@ -119,31 +119,24 @@ if (-not (Test-Path $analyticsPath)) {
     return
 }
 
-# ── Scan projects ─────────────────────────────────────────────────────────────
+# ── Check if column folder needs a date prefix ────────────────────────────────
+$colFolderName    = Split-Path $analyticsPath -Leaf
+$colNeedsRename   = $colFolderName -notmatch '^\d{4}-\d{2}-\d{2}_'
+$newAnalyticsPath = $analyticsPath
+$newColFolderName = $colFolderName
+if ($colNeedsRename) {
+    $colCreated       = (Get-Item $analyticsPath).CreationTime.ToString("yyyy-MM-dd")
+    $newColFolderName = "${colCreated}_${analyticsCol}"
+    $newAnalyticsPath = Join-Path $projectsRoot $newColFolderName
+}
+
+# ── Scan folders ──────────────────────────────────────────────────────────────
 $projects = Get-ChildItem -Path $analyticsPath -Directory |
     Where-Object { $prohibited -notcontains ($_.Name -replace '^\d{4}-\d{2}-\d{2}_','').ToLower() } |
-    Where-Object { Test-Path (Join-Path $_.FullName "project_info.json") } |
-    ForEach-Object {
-        $f    = $_
-        $json = Get-Content (Join-Path $f.FullName "project_info.json") -Raw | ConvertFrom-Json
-        $createdDt = try {
-            [datetime]::ParseExact($json.Created, "yyyy-MM-dd HH:mm", $null)
-        } catch {
-            Write-Warning "  Cannot parse Created date '$($json.Created)' for '$($f.Name)' - using folder date"
-            $f.CreationTime
-        }
-        [PSCustomObject]@{
-            Folder    = $f.FullName
-            Name      = $f.Name
-            Created   = $createdDt
-            OldNo     = $json.ProjectNo
-            Json      = $json
-        }
-    } |
-    Sort-Object Created
+    Sort-Object CreationTime
 
 if ($projects.Count -eq 0) {
-    Write-Host "  No projects with project_info.json found in: $analyticsPath" -ForegroundColor Yellow
+    Write-Host "  No project folders found in: $analyticsPath" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  $rule" -ForegroundColor DarkCyan
     $nItems = @("Back to main menu", "Exit"); $nSel = 0
@@ -169,24 +162,43 @@ if ($projects.Count -eq 0) {
 # ── Preview ───────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
-Write-Host "  Proposed re-numbering (sorted by creation date):" -ForegroundColor Cyan
+Write-Host "  Preview  ($($projects.Count) folders  |  sorted by creation date)" -ForegroundColor Cyan
 Write-Host "  $rule" -ForegroundColor DarkCyan
-Write-Host ("  " + "No.".PadRight(6) + "Was".PadRight(6) + "Created".PadRight(18) + "Project") -ForegroundColor DarkCyan
+if ($colNeedsRename) {
+    Write-Host "  Column folder rename:" -ForegroundColor Cyan
+    Write-Host "    $colFolderName" -ForegroundColor DarkGray
+    Write-Host "    -> $newColFolderName" -ForegroundColor Yellow
+    Write-Host "  $rule" -ForegroundColor DarkCyan
+}
 
 $newNo = 1
 foreach ($p in $projects) {
-    $changed = $p.OldNo -ne $newNo
-    $color   = if ($changed) { "Yellow" } else { "White" }
-    $marker  = if ($changed) { " *" } else { "" }
-    Write-Host ("  " + "$newNo".PadRight(6) + "$($p.OldNo)".PadRight(6) + $p.Created.ToString("yyyy-MM-dd HH:mm").PadRight(18) + $p.Name + $marker) -ForegroundColor $color
+    $jsonPath = Join-Path $p.FullName "project_info.json"
+    $hasJson  = Test-Path $jsonPath
+
+    $sampleFolders = Get-ChildItem -Path $p.FullName -Directory |
+        Where-Object { $prohibited -notcontains ($_.Name -replace '^\d{4}-\d{2}-\d{2}_','').ToLower() } |
+        Select-Object -ExpandProperty Name
+
+    if ($hasJson) {
+        $existing  = Get-Content $jsonPath -Raw | ConvertFrom-Json
+        $idDisplay = if ($existing.ProjectID) { $existing.ProjectID } else { "(will generate)" }
+        Write-Host ("  [$newNo]  " + $p.Name) -ForegroundColor Gray
+        Write-Host ("        ID : $idDisplay  (existing - preserved)") -ForegroundColor DarkGray
+    } else {
+        Write-Host ("  [$newNo]  " + $p.Name) -ForegroundColor White
+        Write-Host ("        ID : (will generate)") -ForegroundColor Cyan
+    }
+    Write-Host ("        Subfolders : " + $(if ($sampleFolders) { $sampleFolders -join ", " } else { "(none)" })) -ForegroundColor DarkGray
     $newNo++
 }
 Write-Host "  $rule" -ForegroundColor DarkCyan
-Write-Host "  * = number will change" -ForegroundColor DarkCyan
+Write-Host "  Gray = already has metadata (ID preserved)" -ForegroundColor DarkGray
+Write-Host "  White = new metadata will be generated" -ForegroundColor White
 Write-Host ""
 
 # ── Confirm ───────────────────────────────────────────────────────────────────
-$cItems = @("Yes, apply changes", "No, cancel")
+$cItems = @("Yes, generate metadata", "No, cancel")
 $cSel   = 0
 $cTop   = [Console]::CursorTop
 [Console]::SetCursorPosition(0, $cTop);     Write-Host ("  > " + $cItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
@@ -225,46 +237,95 @@ while ($true) {
     }
 }
 
-# ── Apply ─────────────────────────────────────────────────────────────────────
-Write-Host ""
-$newLogRows = @()
-$newNo = 1
-foreach ($p in $projects) {
-    # Generate ProjectID before writing JSON so it is persisted on disk
-    if (-not $p.Json.ProjectID) {
-        $p.Json | Add-Member -NotePropertyName ProjectID -NotePropertyValue (
-            -join ((65..90) + (48..57) | Get-Random -Count 8 | ForEach-Object { [char]$_ })
-        ) -Force
+# ── Rename column folder if needed ────────────────────────────────────────────
+if ($colNeedsRename) {
+    try {
+        Rename-Item -Path $analyticsPath -NewName $newColFolderName -ErrorAction Stop
+        $analyticsPath = $newAnalyticsPath
+        $logFile       = Join-Path $analyticsPath "column_log.csv"
+        Write-Host ""
+        Write-Host "  Renamed : $colFolderName -> $newColFolderName" -ForegroundColor Green
+    } catch {
+        Write-Host ""
+        Write-Host "  ERROR renaming column folder: $_" -ForegroundColor Red
+        Write-Host "  Continuing with original path." -ForegroundColor DarkYellow
     }
-    $p.Json.ProjectNo = $newNo
-    $p.Json | ConvertTo-Json | Out-File -FilePath (Join-Path $p.Folder "project_info.json") -Encoding UTF8
-    $changed = if ($p.OldNo -ne $newNo) { " (was $($p.OldNo))" } else { "" }
-    Write-Host "  [$newNo] $($p.Name)$changed" -ForegroundColor $(if ($p.OldNo -ne $newNo) { "Yellow" } else { "Green" })
+}
 
-    $newLogRows += [PSCustomObject]@{
-        ProjectID             = $p.Json.ProjectID
-        ProjectNo             = $newNo
-        Date                  = $p.Json.Created
-        Project               = $p.Json.Project
-        PI                    = if ($null -eq $p.Json.PI) { "" } else { $p.Json.PI }
-        AnalyticsColumn       = $p.Json.AnalyticsColumn
-        ColumnDescription     = if ($null -eq $p.Json.ColumnDescription) { "" } else { $p.Json.ColumnDescription }
-        TrapColumn            = if ($null -eq $p.Json.TrapColumn) { "" } else { $p.Json.TrapColumn }
-        TrapColumnDescription = if ($null -eq $p.Json.TrapColumnDescription) { "" } else { $p.Json.TrapColumnDescription }
-        SampleFolders         = ($p.Json.SampleFolders -join ";")
+# ── Write metadata ────────────────────────────────────────────────────────────
+Write-Host ""
+$logRows = @()
+$newNo   = 1
+
+foreach ($p in $projects) {
+    $pPath         = Join-Path $analyticsPath $p.Name
+    $jsonPath      = Join-Path $pPath "project_info.json"
+    $sampleFolders = Get-ChildItem -Path $pPath -Directory |
+        Where-Object { $prohibited -notcontains ($_.Name -replace '^\d{4}-\d{2}-\d{2}_','').ToLower() } |
+        Select-Object -ExpandProperty Name
+
+    $created = $p.CreationTime.ToString("yyyy-MM-dd HH:mm")
+
+    if (Test-Path $jsonPath) {
+        $existing  = Get-Content $jsonPath -Raw | ConvertFrom-Json
+        $projectID = if ($existing.ProjectID) { $existing.ProjectID }
+                     else { -join ((65..90) + (48..57) | Get-Random -Count 8 | ForEach-Object { [char]$_ }) }
+        # Preserve all existing fields; only update ProjectNo and fill missing ProjectID
+        $existing.ProjectNo = $newNo
+        if (-not $existing.ProjectID) {
+            $existing | Add-Member -NotePropertyName ProjectID -NotePropertyValue $projectID -Force
+        }
+        if (-not $existing.AnalyticsColumn) {
+            $existing | Add-Member -NotePropertyName AnalyticsColumn -NotePropertyValue $analyticsCol -Force
+        }
+        $existing | ConvertTo-Json | Out-File -FilePath $jsonPath -Encoding UTF8
+        Write-Host "  [$newNo] $($p.Name)  (preserved)" -ForegroundColor Gray
+    } else {
+        $projectID = -join ((65..90) + (48..57) | Get-Random -Count 8 | ForEach-Object { [char]$_ })
+        [PSCustomObject]@{
+            ProjectID       = $projectID
+            Project         = $p.Name
+            PI              = $null
+            AnalyticsColumn = $analyticsCol
+            ColumnDescription = ""
+            TrapColumn      = $null
+            TrapColumnDescription = ""
+            ProjectNo       = $newNo
+            Created         = $created
+            SampleFolders   = @($sampleFolders)
+        } | ConvertTo-Json | Out-File -FilePath $jsonPath -Encoding UTF8
+        Write-Host "  [$newNo] $($p.Name)  ID: $projectID" -ForegroundColor Green
     }
+
+    $jsonOut = Get-Content $jsonPath -Raw | ConvertFrom-Json
+    $logRows += [PSCustomObject]@{
+        ProjectID             = $projectID
+        ProjectNo             = $newNo
+        Date                  = if ($jsonOut.Created) { $jsonOut.Created } else { $created }
+        Project               = $jsonOut.Project
+        PI                    = if ($jsonOut.PI) { $jsonOut.PI } else { "" }
+        AnalyticsColumn       = $analyticsCol
+        ColumnDescription     = if ($jsonOut.ColumnDescription) { $jsonOut.ColumnDescription } else { "" }
+        TrapColumn            = if ($jsonOut.TrapColumn) { $jsonOut.TrapColumn } else { "" }
+        TrapColumnDescription = if ($jsonOut.TrapColumnDescription) { $jsonOut.TrapColumnDescription } else { "" }
+        SampleFolders         = (@($jsonOut.SampleFolders) -join ";")
+    }
+
     $newNo++
 }
 
-# Rebuild column_log.csv from scratch
-$newLogRows | Export-Csv $logFile -NoTypeInformation
+$logRows | Export-Csv $logFile -NoTypeInformation
 Write-Host ""
 Write-Host "  Rebuilt : $logFile" -ForegroundColor Green
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
-Write-Host "  Done!  $($projects.Count) project(s) re-numbered." -ForegroundColor Cyan
+Write-Host "  Done!  $($projects.Count) project(s) processed." -ForegroundColor Cyan
+Write-Host "  $rule" -ForegroundColor DarkCyan
+Write-Host "  TrapColumn is blank for backfilled projects." -ForegroundColor DarkGray
+Write-Host "  Use [12] Repair project order to fix ordering" -ForegroundColor DarkGray
+Write-Host "  or edit project_info.json files directly." -ForegroundColor DarkGray
 Write-Host "  $border" -ForegroundColor DarkCyan
 
 # ── Navigation ────────────────────────────────────────────────────────────────

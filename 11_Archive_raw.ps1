@@ -4,7 +4,7 @@ $rule   = "-" * $w
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
-Write-Host "   [10] Archive raw files              (to external HDD)" -ForegroundColor Cyan
+Write-Host "   [11] Archive raw files              (to external HDD)" -ForegroundColor Cyan
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host ""
 

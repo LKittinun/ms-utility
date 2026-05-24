@@ -4,7 +4,7 @@ $rule   = "-" * $w
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
-Write-Host "   [8]  Contaminant check             (mzsniffer)" -ForegroundColor Cyan
+Write-Host "   [9]  Contaminant check             (mzsniffer)" -ForegroundColor Cyan
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host ""
 

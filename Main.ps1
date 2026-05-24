@@ -14,16 +14,17 @@ $entries = @(
     @{ Type = "sep";  Label = "  Analysis"                                                                            }
     @{ Type = "item"; Label = "[4]  Column usage report";          Script = ".\04_Column_usage.ps1";             Color = "White"     }
     @{ Type = "item"; Label = "[5]  DIA-NN metrics                (plots + TSV)"; Script = ".\05_DIANN_metrics.ps1";    Color = "White" }
-    @{ Type = "item"; Label = "[6]  Analysis report               (Excel)";       Script = ".\06_Report_generator.ps1"; Color = "White" }
+    @{ Type = "item"; Label = "[6]  DIA-NN default run            (command line)"; Script = ".\06_DIANN_run.ps1";       Color = "White" }
+    @{ Type = "item"; Label = "[7]  Analysis report               (Excel)";       Script = ".\07_Report_generator.ps1"; Color = "White" }
     @{ Type = "sep";  Label = "  Miscellaneous"                                                                       }
-    @{ Type = "item"; Label = "[7]  Bulk convert .raw to mzML     (msConvert)"; Script = ".\07_Bulk_msConvert.ps1";    Color = "White" }
-    @{ Type = "item"; Label = "[8]  Contaminant check             (mzsniffer)"; Script = ".\08_Contaminant_check.ps1"; Color = "White" }
-    @{ Type = "item"; Label = "[9]  Clear method files            (*sld *meth)"; Script = ".\09_Clear_files.ps1";      Color = "White" }
+    @{ Type = "item"; Label = "[8]  Bulk convert .raw to mzML     (msConvert)"; Script = ".\08_Bulk_msConvert.ps1";    Color = "White" }
+    @{ Type = "item"; Label = "[9]  Contaminant check             (mzsniffer)"; Script = ".\09_Contaminant_check.ps1"; Color = "White" }
+    @{ Type = "item"; Label = "[10] Clear method files            (*sld *meth)"; Script = ".\10_Clear_files.ps1";      Color = "White" }
     @{ Type = "sep";  Label = "  Admin only"                                                                          }
-    @{ Type = "item"; Label = "[10] Archive raw files             (external HDD)"; Script = ".\10_Archive_raw.ps1";   Color = "DarkGray" }
-    @{ Type = "item"; Label = "[11] Repair project order";         Script = ".\11_Repair_project_order.ps1";     Color = "DarkGray"  }
-    @{ Type = "item"; Label = "[12] Backfill existing column";     Script = ".\12_Backfill_column.ps1";          Color = "DarkGray"  }
-    @{ Type = "item"; Label = "[13] Sync from overview CSV";       Script = ".\13_Sync_from_overview.ps1";       Color = "DarkGray"  }
+    @{ Type = "item"; Label = "[11] Archive raw files             (external HDD)"; Script = ".\11_Archive_raw.ps1";   Color = "DarkGray" }
+    @{ Type = "item"; Label = "[12] Repair project order";         Script = ".\12_Repair_project_order.ps1";     Color = "DarkGray"  }
+    @{ Type = "item"; Label = "[13] Backfill existing column";     Script = ".\13_Backfill_column.ps1";          Color = "DarkGray"  }
+    @{ Type = "item"; Label = "[14] Sync from overview CSV";       Script = ".\14_Sync_from_overview.ps1";       Color = "DarkGray"  }
     @{ Type = "sep";  Label = "  Settings"                                                                          }
     @{ Type = "item"; Label = "Set root directory";              Script = "__SET_ROOT__";                Color = "DarkGray"   }
     @{ Type = "sep";  Label = ""                                                                                      }
