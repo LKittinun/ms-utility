@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Mass Spectrometry Utility Suite - Project Section Manual</title>
+<title>Mass Spectrometry Utility Suite - User Manual</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -160,8 +160,8 @@
 <!-- ═══════════════════ COVER ═══════════════════ -->
 <div class="cover">
   <h1>Mass Spectrometry Utility Suite</h1>
-  <div class="subtitle">Project Section - User Manual</div>
-  <div class="meta">Scripts: [1] Project Folder Initializer &nbsp;|&nbsp; [2] Find Project &nbsp;|&nbsp; [3] Projects Overview</div>
+  <div class="subtitle">User Manual</div>
+  <div class="meta">Scripts: [1] Project Folder Initializer &nbsp;|&nbsp; [2] Find Project &nbsp;|&nbsp; [3] Projects Overview &nbsp;|&nbsp; [6] DIA-NN Default Run</div>
 </div>
 
 <!-- ═══════════════════ TOC ═══════════════════ -->
@@ -172,6 +172,7 @@
     <li><a href="#s01">Script [1]  - Project Folder Initializer</a></li>
     <li><a href="#s02">Script [2]  - Find Project</a></li>
     <li><a href="#s03">Script [3]  - Projects Overview</a></li>
+    <li><a href="#s06">Script [6]  - DIA-NN Default Run</a></li>
     <li><a href="#structure">Folder &amp; File Structure Reference</a></li>
   </ol>
 </div>
@@ -471,8 +472,152 @@
 
 <hr>
 
+<!-- ═══════════════════ SCRIPT 06 ═══════════════════ -->
+<h2 id="s06">5. Script [6]  - DIA-NN Default Run</h2>
+
+<p>Builds and executes a DIA-NN command line from the <code>.raw</code> files in a sample subfolder. This is the standard first-pass analysis step, run before generating the analysis report (script [7]).</p>
+
+<h3>How to launch</h3>
+<p>Select <strong>[6] DIA-NN default run</strong> from the main menu and confirm <em>Run</em>.</p>
+
+<h3>Configuration file</h3>
+<p>DIA-NN paths and default parameters are stored in <code>diann_config.json</code> in the script root directory. The file is created automatically on first run with sensible defaults. Edit it with any text editor to change paths or default values.</p>
+
+<table>
+  <tr><th>Field</th><th>Default</th><th>Description</th></tr>
+  <tr><td><code>DiannExe</code></td><td><code>C:\DIA-NN\2.5.0\diann.exe</code></td><td>Full path to the DIA-NN executable</td></tr>
+  <tr><td><code>Library</code></td><td><code>C:\DIA-NN\Library\HS_400_1000_145_1450.predicted.speclib</code></td><td>Spectral library (.speclib)</td></tr>
+  <tr><td><code>MainFasta</code></td><td><code>C:\DIA-NN\Library\Homo_sapiens_reviewed_2023_12_10.fasta</code></td><td>Main proteome FASTA database</td></tr>
+  <tr><td><code>ContamFasta</code></td><td><code>C:\DIA-NN\2.5.0\camprotR_240512_cRAP_20190401_full_tags.fasta</code></td><td>Contaminant FASTA database</td></tr>
+  <tr><td><code>Threads</code></td><td><code>12</code></td><td>Default CPU thread count</td></tr>
+  <tr><td><code>MassAcc</code></td><td><code>15</code></td><td>Default MS2 mass accuracy (ppm)</td></tr>
+  <tr><td><code>MassAccMs1</code></td><td><code>7</code></td><td>Default MS1 mass accuracy (ppm)</td></tr>
+</table>
+
+<h3>Step-by-step walkthrough</h3>
+<div class="steps">
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <strong>Project directory</strong>
+      Enter the path to the project folder (e.g. <code>Z:\Proteomics\Projects\2026-04-07_C20789965\2026-05-08_Kesara_Spheroid</code>). Leave blank to use the current working directory.
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <strong>Select sample subfolder</strong>
+      The script scans for subfolders (and the folder itself) that contain <code>.raw</code> files directly inside them.
+      <ul>
+        <li>If only one candidate is found it is selected automatically.</li>
+        <li>If multiple candidates exist, an arrow-key picker lets you choose which subfolder to process.</li>
+      </ul>
+      All found <code>.raw</code> files are listed.
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <strong>Locked file check</strong>
+      Each <code>.raw</code> file is tested to see whether it is still held open by the instrument software (acquisition in progress). Locked files are flagged in yellow.
+      <div class="box warn" style="margin-top:8px">
+        <div class="box-label">Warning</div>
+        Including a file that is still being acquired will cause DIA-NN to fail or produce corrupt results. If locked files are detected, choose <strong>Y</strong> to skip them and continue with the completed files only, or <strong>N</strong> to abort.
+      </div>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <strong>Reuse existing .quant files?</strong> (shown only if <code>.raw.quant</code> files are present)<br>
+      DIA-NN saves intermediate quantification data as <code>.raw.quant</code> files after the first pass. If these files already exist from a previous run, you are asked whether to reuse them.
+      <ul>
+        <li><strong>Y</strong> - skip re-quantification (faster; adds <code>--use-quant</code> to the command)</li>
+        <li><strong>N</strong> - perform a full fresh run from the raw data</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <strong>Command preview</strong>
+      The full DIA-NN command is summarised using the defaults from <code>diann_config.json</code>, showing the executable, number of input files, library, output path, thread count, mass accuracies, and MBR status. Three options are available:
+      <ul>
+        <li><strong>Run DIA-NN</strong> - execute immediately with the displayed settings</li>
+        <li><strong>Edit parameters</strong> - adjust the four variable parameters, then the preview redraws with the updated values</li>
+        <li><strong>Back to main menu</strong> - cancel and return</li>
+      </ul>
+      When you select <em>Edit parameters</em>, press <kbd>Enter</kbd> on any prompt to keep the current value:
+      <ul>
+        <li><strong>Mass accuracy MS2 (ppm)</strong> - typically 10-20 depending on instrument calibration</li>
+        <li><strong>Mass accuracy MS1 (ppm)</strong> - typically 5-10</li>
+        <li><strong>Threads</strong> - number of CPU cores to use</li>
+        <li><strong>Match between runs (MBR) [Y/N]</strong> - enables two-pass analysis (<code>--reanalyse --rt-profiling</code>); on by default</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">6</div>
+    <div class="step-body">
+      <strong>DIA-NN runs</strong>
+      Output is streamed live to the terminal. The <code>Result\</code> folder inside the sample subfolder is created automatically if it does not exist. When DIA-NN finishes, the exit status is reported.
+    </div>
+  </div>
+
+</div>
+
+<h3>Standard flags used</h3>
+<p>The following DIA-NN flags are always applied and are not user-configurable at runtime. They reflect the standard proteomics workflow used in this facility.</p>
+
+<table>
+  <tr><th>Flag(s)</th><th>Effect</th></tr>
+  <tr><td><code>--qvalue 0.01</code></td><td>1% FDR threshold</td></tr>
+  <tr><td><code>--matrices</code></td><td>Save precursor and protein expression matrices</td></tr>
+  <tr><td><code>--gen-spec-lib</code></td><td>Generate empirical spectral library from DIA data</td></tr>
+  <tr><td><code>--xic</code></td><td>Save XIC data for each precursor</td></tr>
+  <tr><td><code>--cont-quant-exclude cRAP-</code></td><td>Exclude cRAP contaminants from normalisation and protein quantification</td></tr>
+  <tr><td><code>--met-excision</code></td><td>N-terminal methionine excision enabled</td></tr>
+  <tr><td><code>--min/max-pep-len 7/30</code></td><td>Peptide length range</td></tr>
+  <tr><td><code>--min/max-pr-mz 400/1000</code></td><td>Precursor m/z range</td></tr>
+  <tr><td><code>--min/max-fr-mz 145/1450</code></td><td>Fragment m/z range</td></tr>
+  <tr><td><code>--cut K*,R*</code> <code>--missed-cleavages 1</code></td><td>Tryptic digest, up to 1 missed cleavage</td></tr>
+  <tr><td><code>--unimod4</code></td><td>Cysteine carbamidomethylation as fixed modification</td></tr>
+  <tr><td><code>--reanalyse --rt-profiling</code></td><td>Two-pass analysis with match-between-runs (MBR) - included by default, omitted if MBR is disabled at the preview step</td></tr>
+</table>
+
+<h3>Output files</h3>
+<p>All output is written to <code>&lt;SampleFolder&gt;\Result\</code>:</p>
+<table>
+  <tr><th>File</th><th>Description</th></tr>
+  <tr><td><code>report.parquet</code></td><td>Main DIA-NN report (precursor-level)</td></tr>
+  <tr><td><code>report.pg_matrix.tsv</code></td><td>Protein group intensity matrix</td></tr>
+  <tr><td><code>report.pr_matrix.tsv</code></td><td>Precursor intensity matrix</td></tr>
+  <tr><td><code>report-lib.parquet</code></td><td>Empirical spectral library generated from the data</td></tr>
+  <tr><td><code>report.log.txt</code></td><td>Full DIA-NN log including the exact command used</td></tr>
+  <tr><td><code>report.stats.tsv</code></td><td>Per-run identification statistics</td></tr>
+  <tr><td><code>report_runs.pdf</code></td><td>Run-level QC plots</td></tr>
+  <tr><td><code>report_trends.pdf</code></td><td>Trend plots across runs</td></tr>
+</table>
+
+<h3>After the run</h3>
+<p>Three options are available once DIA-NN finishes:</p>
+<table>
+  <tr><th>Option</th><th>Action</th></tr>
+  <tr><td>Open Result folder</td><td>Opens the <code>Result\</code> folder in Windows Explorer</td></tr>
+  <tr><td>Run analysis report (next step)</td><td>Launches script [7] directly to generate the Excel analysis report</td></tr>
+  <tr><td>Back to main menu</td><td>Returns to the main menu</td></tr>
+</table>
+
+<hr>
+
 <!-- ═══════════════════ STRUCTURE REFERENCE ═══════════════════ -->
-<h2 id="structure">5. Folder &amp; File Structure Reference</h2>
+<h2 id="structure">6. Folder &amp; File Structure Reference</h2>
 
 <table>
   <tr><th>Path</th><th>Created by</th><th>Purpose</th></tr>
@@ -514,7 +659,7 @@
 </table>
 
 <div style="margin-top:40px; padding-top:16px; border-top:1px solid #ddd; font-size:8.5pt; color:#888; text-align:center;">
-  Mass Spectrometry Utility Suite  - Project Section Manual  - Generated 2026-03-09
+  Mass Spectrometry Utility Suite  - User Manual  - Updated 2026-05-24
 </div>
 
 </div><!-- /page-wrap -->
