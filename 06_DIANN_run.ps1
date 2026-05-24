@@ -155,6 +155,15 @@ if ($null -eq $targetFolder) {
     }
 }
 
+# -- Parameter defaults (set once, preserved across re-runs) ------------------
+$massAcc    = [int]$diannCfg.MassAcc
+$massAccMs1 = [int]$diannCfg.MassAccMs1
+$threads    = [int]$diannCfg.Threads
+$mbr        = $true
+
+# -- Run loop (Re-run re-uses $targetFolder without re-asking the folder) -----
+:runLoop while ($true) {
+
 # -- Collect .raw files -------------------------------------------------------
 $rawFiles = @(Get-ChildItem -Path $targetFolder -Filter *.raw -File | Sort-Object Name)
 
@@ -180,6 +189,7 @@ $rawFiles | ForEach-Object {
 }
 Write-Host ""
 
+$abortRun = $false
 if ($lockedFiles.Count -gt 0) {
     Write-Host "  WARNING: $($lockedFiles.Count) file(s) are still locked (acquisition in progress)." -ForegroundColor Yellow
     $skipAnswer = Read-Host "  Skip locked files and continue with the rest? [Y/N]"
@@ -189,34 +199,44 @@ if ($lockedFiles.Count -gt 0) {
         Write-Host ""
         if ($rawFiles.Count -eq 0) {
             Write-Host "  No files remaining to process." -ForegroundColor Red
-            $targetFolder = $null
+            $abortRun = $true
         }
     } else {
-        $targetFolder = $null
+        $abortRun = $true
     }
 }
 
-if ($null -eq $targetFolder) {
-    $nItems = @("Back to main menu", "Exit")
+if ($abortRun) {
+    $nItems = @("Re-run same folder", "Back to main menu", "Exit")
     $nSel   = 0
     Write-Host ""
     Write-Host "  $rule" -ForegroundColor DarkCyan
     $nTop = [Console]::CursorTop
-    [Console]::SetCursorPosition(0, $nTop)
-    Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 1)
-    Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 2)
+    for ($ni = 0; $ni -lt $nItems.Count; $ni++) {
+        [Console]::SetCursorPosition(0, $nTop + $ni)
+        $color = if ($ni -eq 2) { "DarkYellow" } else { "Cyan" }
+        if ($ni -eq 0) {
+            Write-Host ("  > " + $nItems[$ni]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
+        } else {
+            Write-Host ("    " + $nItems[$ni]).PadRight($w + 4) -ForegroundColor $color -NoNewline
+        }
+    }
+    [Console]::SetCursorPosition(0, $nTop + $nItems.Count)
     while ($true) {
         $k = [Console]::ReadKey($true)
         if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-            $p = $nSel; $nSel = 1 - $nSel
-            [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
+            $p = $nSel
+            if ($k.Key -eq [ConsoleKey]::UpArrow) { $nSel = ($nSel - 1 + $nItems.Count) % $nItems.Count }
+            else { $nSel = ($nSel + 1) % $nItems.Count }
+            $pc = if ($p -eq 2) { "DarkYellow" } else { "Cyan" }
+            [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4)    -ForegroundColor $pc -NoNewline
             [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-            if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-            else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-            return
+        } elseif ($k.Key -eq [ConsoleKey]::Enter) {
+            if ($nSel -eq 0) { continue runLoop }
+            if ($nSel -eq 1) { Clear-Host; .\Main.ps1; return }
+            [Console]::SetCursorPosition(0, $nTop + $nItems.Count + 1); Write-Host "  Exiting..." -ForegroundColor DarkYellow; return
+        } elseif ($k.Key -eq [ConsoleKey]::Escape) {
+            Clear-Host; .\Main.ps1; return
         }
     }
 }
@@ -231,17 +251,12 @@ if ($quantFiles.Count -gt 0) {
     Write-Host ""
 }
 
-# -- Defaults and output paths --------------------------------------------------
-$massAcc    = [int]$diannCfg.MassAcc
-$massAccMs1 = [int]$diannCfg.MassAccMs1
-$threads    = [int]$diannCfg.Threads
-$mbr        = $true
-
+# -- Output paths -------------------------------------------------------------
 $resultDir     = Join-Path $targetFolder "Result"
 $outParquet    = Join-Path $resultDir "report.parquet"
 $outLibParquet = Join-Path $resultDir "report-lib.parquet"
 
-# -- Preview / confirm loop -----------------------------------------------------
+# -- Preview / confirm loop ---------------------------------------------------
 :previewLoop while ($true) {
     $diannArgs = @()
     foreach ($f in $rawFiles) { $diannArgs += @("--f", $f.FullName) }
@@ -355,8 +370,8 @@ if ($exitCode -ne 0) {
 }
 
 # -- Navigation ---------------------------------------------------------------
-$nItems  = @("Open Result folder", "Run analysis report (next step)", "Back to main menu")
-$nColors = @("Cyan", "Cyan", "Cyan")
+$nItems  = @("Open Result folder", "Run analysis report (next step)", "Re-run same folder", "Back to main menu")
+$nColors = @("Cyan", "Cyan", "Cyan", "Cyan")
 $nSel    = 0
 Write-Host ""
 Write-Host "  $rule" -ForegroundColor DarkCyan
@@ -379,15 +394,13 @@ while ($true) {
         [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $nColors[$p] -NoNewline
         [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
     } elseif ($k.Key -eq [ConsoleKey]::Enter) {
-        if ($nSel -eq 0) {
-            Start-Process explorer.exe $resultDir
-        } elseif ($nSel -eq 1) {
-            Clear-Host; & ".\07_Report_generator.ps1"
-        } else {
-            Clear-Host; .\Main.ps1
-        }
-        return
+        if ($nSel -eq 0)      { Start-Process explorer.exe $resultDir; return }
+        elseif ($nSel -eq 1)  { Clear-Host; & ".\07_Report_generator.ps1"; return }
+        elseif ($nSel -eq 2)  { continue runLoop }
+        else                  { Clear-Host; .\Main.ps1; return }
     } elseif ($k.Key -eq [ConsoleKey]::Escape) {
         Clear-Host; .\Main.ps1; return
     }
 }
+
+} # end :runLoop
