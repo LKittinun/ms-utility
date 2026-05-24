@@ -168,6 +168,43 @@ $sortByDate = $false
 # -- Collect .raw files -------------------------------------------------------
 $rawFiles = @(Get-ChildItem -Path $targetFolder -Filter *.raw -File | Sort-Object Name)
 
+if ($rawFiles.Count -eq 0) {
+    Write-Host ""
+    Write-Host "  No .raw files found in: $(Split-Path $targetFolder -Leaf)" -ForegroundColor Red
+    $nItems = @("Re-run same folder", "Back to main menu", "Exit")
+    $nSel   = 0
+    Write-Host ""
+    Write-Host "  $rule" -ForegroundColor DarkCyan
+    $nTop = [Console]::CursorTop
+    for ($ni = 0; $ni -lt $nItems.Count; $ni++) {
+        [Console]::SetCursorPosition(0, $nTop + $ni)
+        $color = if ($ni -eq 2) { "DarkYellow" } else { "Cyan" }
+        if ($ni -eq 0) {
+            Write-Host ("  > " + $nItems[$ni]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
+        } else {
+            Write-Host ("    " + $nItems[$ni]).PadRight($w + 4) -ForegroundColor $color -NoNewline
+        }
+    }
+    [Console]::SetCursorPosition(0, $nTop + $nItems.Count)
+    while ($true) {
+        $k = [Console]::ReadKey($true)
+        if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
+            $p = $nSel
+            if ($k.Key -eq [ConsoleKey]::UpArrow) { $nSel = ($nSel - 1 + $nItems.Count) % $nItems.Count }
+            else { $nSel = ($nSel + 1) % $nItems.Count }
+            $pc = if ($p -eq 2) { "DarkYellow" } else { "Cyan" }
+            [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4)    -ForegroundColor $pc -NoNewline
+            [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
+        } elseif ($k.Key -eq [ConsoleKey]::Enter) {
+            if ($nSel -eq 0) { continue runLoop }
+            if ($nSel -eq 1) { Clear-Host; .\Main.ps1; return }
+            [Console]::SetCursorPosition(0, $nTop + $nItems.Count + 1); Write-Host "  Exiting..." -ForegroundColor DarkYellow; return
+        } elseif ($k.Key -eq [ConsoleKey]::Escape) {
+            Clear-Host; .\Main.ps1; return
+        }
+    }
+}
+
 # -- Check for locked files (still being acquired) ----------------------------
 $lockedFiles = @($rawFiles | Where-Object {
     try {
