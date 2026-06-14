@@ -1,7 +1,7 @@
 $w          = 55
 $border     = "=" * $w
 $rule       = "-" * $w
-$prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history")
+$prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history", "result")
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
@@ -282,6 +282,7 @@ $analyticsPath = $null
 if (Test-Path $projectsRoot) {
     $existingColDir = Get-ChildItem $projectsRoot -Directory |
         Where-Object { $_.Name -like "*_$analyticsCol" } |
+        Sort-Object Name |
         Select-Object -First 1
     if ($existingColDir) { $analyticsPath = $existingColDir.FullName }
 }
@@ -306,7 +307,7 @@ if ($null -eq $colInfoData) {
     do {
         $colFirstUse = Read-Host "  First use date (yyyy-MM-dd, leave blank to skip)"
         if ($colFirstUse -eq "") { break }
-        $parsedDate = $null
+        [datetime]$parsedDate = [datetime]::MinValue
         $valid = [datetime]::TryParseExact($colFirstUse, "yyyy-MM-dd",
                      [System.Globalization.CultureInfo]::InvariantCulture,
                      [System.Globalization.DateTimeStyles]::None,
@@ -419,7 +420,11 @@ if ($projSel -eq 0) {
     $datePrefix  = Get-Date -Format "yyyy-MM-dd"
     $projectPath = Join-Path $analyticsPath "${datePrefix}_${projectName}"
     if (Test-Path $projectPath) {
-        Write-Host "  WARNING: project folder already exists." -ForegroundColor Yellow
+        if (Test-Path (Join-Path $projectPath "project_info.json")) {
+            Write-Host "  ERROR: This project already exists. Select it from the existing project list." -ForegroundColor Red
+            return
+        }
+        Write-Host "  WARNING: project folder already exists (no project metadata - will initialize)." -ForegroundColor Yellow
     }
 } else {
     # Existing project - load info, no further prompts for fixed fields
@@ -826,27 +831,33 @@ $logRow = [PSCustomObject]@{
     ProjectNo         = $projectNo
     Date              = $now
     Project           = $projectName
-    PI                = $pi
+    PI                = if ($pi -eq "")       { $null } else { $pi }
     AnalyticsColumn   = $analyticsCol
-    ColumnDescription = $colDesc
-    TrapColumn            = $trapCol
-    TrapColumnDescription = $trapColDesc
+    ColumnDescription = if ($colDesc -eq "")  { $null } else { $colDesc }
+    TrapColumn            = if ($trapCol -eq "")     { $null } else { $trapCol }
+    TrapColumnDescription = if ($trapColDesc -eq "") { $null } else { $trapColDesc }
     SampleFolders     = $subfolders -join ";"
 }
 if (Test-Path $logFile) {
     $existingRows = @(Import-Csv $logFile)
     $matchIdx = -1
     for ($ri = 0; $ri -lt $existingRows.Count; $ri++) {
-        if ($existingRows[$ri].Project -eq $projectName) { $matchIdx = $ri; break }
+        if ($existingRows[$ri].ProjectID -and $existingRows[$ri].ProjectID -eq $projectID) { $matchIdx = $ri; break }
     }
+    if ($matchIdx -lt 0) {
+        for ($ri = 0; $ri -lt $existingRows.Count; $ri++) {
+            if ($existingRows[$ri].Project -eq $projectName) { $matchIdx = $ri; break }
+        }
+    }
+    $colOrder = @("ProjectID","ProjectNo","Date","Project","PI","AnalyticsColumn","ColumnDescription","TrapColumn","TrapColumnDescription","SampleFolders")
     if ($matchIdx -ge 0) {
         $existingRows[$matchIdx] = $logRow
-        $existingRows | Export-Csv $logFile -NoTypeInformation
+        $existingRows | Select-Object $colOrder | Export-Csv $logFile -NoTypeInformation -Encoding UTF8
     } else {
-        $logRow | Export-Csv $logFile -Append -NoTypeInformation
+        $logRow | Export-Csv $logFile -Append -NoTypeInformation -Encoding UTF8
     }
 } else {
-    $logRow | Export-Csv $logFile -NoTypeInformation
+    $logRow | Export-Csv $logFile -NoTypeInformation -Encoding UTF8
 }
 
 # ── Summary ───────────────────────────────────────────────────────────────────

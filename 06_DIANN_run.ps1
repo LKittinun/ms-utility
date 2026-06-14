@@ -38,10 +38,10 @@ Write-Host ""
 $diannConfigPath = Join-Path $PSScriptRoot "diann_config.json"
 if (-not (Test-Path $diannConfigPath)) {
     $default = [pscustomobject]@{
-        DiannExe    = "C:\DIA-NN\2.5.0\diann.exe"
+        DiannExe    = "C:\DIA-NN\2.6.0\diann.exe"
         Library     = "C:\DIA-NN\Library\HS_400_1000_145_1450.predicted.speclib"
         MainFasta   = "C:\DIA-NN\Library\Homo_sapiens_reviewed_2023_12_10.fasta"
-        ContamFasta = "C:\DIA-NN\2.5.0\camprotR_240512_cRAP_20190401_full_tags.fasta"
+        ContamFasta = "C:\DIA-NN\2.6.0\camprotR_240512_cRAP_20190401_full_tags.fasta"
         Threads     = 12
         MassAcc     = 15
         MassAccMs1  = 7
@@ -166,7 +166,7 @@ $sortByDate = $false
 :runLoop while ($true) {
 
 # -- Collect .raw files -------------------------------------------------------
-$rawFiles = @(Get-ChildItem -Path $targetFolder -Filter *.raw -File | Sort-Object Name)
+$rawFiles = @(Get-ChildItem -Path $targetFolder -Filter *.raw -File -ErrorAction SilentlyContinue | Sort-Object Name)
 
 if ($rawFiles.Count -eq 0) {
     Write-Host ""
