@@ -38,8 +38,15 @@ Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoN
 Write-Host ""
 
 $first_path = Get-Location
-$path = Read-Host "Insert project directory, leave blank for current location"
-if ($path -eq "") { $path = $first_path.Path }
+$raw = Read-Host "Insert project directory, leave blank for current location (use ; to chain two folders)"
+if ($raw -eq "") { $raw = $first_path.Path }
+$parts = @($raw -split ";" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
+$path  = $parts[0]
+$path2 = if ($parts.Count -ge 2) { $parts[1] } else { "" }
+if ($path2 -ne "") {
+    Write-Host "  Chained folder : $path2" -ForegroundColor DarkCyan
+    Write-Host ""
+}
 
 # Detect subfolders that contain a Result\ subfolder (sample type folders)
 $subfolders = Get-ChildItem -Path $path -Directory |
@@ -80,7 +87,9 @@ if (-not $rscript) {
         Write-Host "  Processing: $($sf.Name)" -ForegroundColor Cyan
         Write-Host "  $rule" -ForegroundColor DarkCyan
         try {
-            & $rscript ".\R\generate_report.R" $sfPath 2>&1 | ForEach-Object { "$_" }
+            $rArgs = @(".\R\generate_report.R", $sfPath, "Result", $sfPath)
+            if ($path2 -ne "") { $rArgs += $path2.Replace("\", "/") }
+            & $rscript @rArgs 2>&1 | ForEach-Object { "$_" }
         } catch {
             Write-Host "  Unexpected error during R execution: $_" -ForegroundColor Red
         }

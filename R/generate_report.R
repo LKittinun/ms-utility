@@ -62,6 +62,10 @@ output_dir_arg  <- if (length(args) >= 3) args[3] else project_dir_arg
 project_dir <- normalizePath(project_dir_arg, winslash = "/", mustWork = FALSE)
 result_dir  <- file.path(project_dir, result_dir_name)
 output_dir  <- normalizePath(output_dir_arg, winslash = "/", mustWork = FALSE)
+second_dir_arg <- if (length(args) >= 4) args[4] else NULL
+second_dir <- if (!is.null(second_dir_arg) && nchar(second_dir_arg) > 0) {
+  normalizePath(second_dir_arg, winslash = "/", mustWork = FALSE)
+} else NULL
 
 sep <- strrep("=", 62)
 cat(sprintf("\n%s\n", sep))
@@ -70,6 +74,7 @@ cat(sprintf("%s\n", sep))
 cat(sprintf(" Project : %s\n", project_dir))
 cat(sprintf(" Results : %s\n", result_dir))
 cat(sprintf(" Output  : %s\n", output_dir))
+if (!is.null(second_dir)) cat(sprintf(" Chained : %s\n", second_dir))
 cat(sprintf("%s\n\n", sep))
 
 # -----------------------------------------------------------------------------
@@ -98,28 +103,46 @@ shorten_colnames <- function(df) {
 # DATA COLLECTION
 # -----------------------------------------------------------------------------
 
-collect_raw_files <- function(project_dir) {
-  files <- character(0)
-  for (ext in RAW_EXTENSIONS) {
-    files <- c(files,
-               list.files(project_dir,
-                          pattern    = paste0("\\", ext, "$"),
-                          full.names = TRUE,
-                          ignore.case = TRUE))
+collect_raw_files <- function(project_dir, second_dir = NULL) {
+  find_raw <- function(dir) {
+    files <- character(0)
+    for (ext in RAW_EXTENSIONS)
+      files <- c(files, list.files(dir, pattern = paste0("\\", ext, "$"),
+                                   full.names = TRUE, ignore.case = TRUE))
+    sort(files)
   }
-  if (length(files) == 0) return(data.frame())
 
-  rows <- lapply(sort(files), function(f) {
-    st <- file.info(f)
-    data.frame(
-      `File Name` = basename(f),
-      `Size (MB)` = round(st$size / 1024^2, 2),
-      `Size (GB)` = round(st$size / 1024^3, 3),
-      `Created`   = format(st$ctime, "%Y-%m-%d %H:%M"),
-      check.names = FALSE, stringsAsFactors = FALSE
-    )
+  second_search <- NULL
+  if (!is.null(second_dir) && dir.exists(second_dir)) {
+    sub_match <- file.path(second_dir, basename(project_dir))
+    second_search <- if (dir.exists(sub_match)) sub_match else second_dir
+  }
+
+  two_sources <- !is.null(second_search)
+  dirs <- if (two_sources) {
+    list(list(path = project_dir, label = basename(project_dir)),
+         list(path = second_search, label = basename(second_dir)))
+  } else {
+    list(list(path = project_dir, label = NULL))
+  }
+
+  all_rows <- lapply(dirs, function(d) {
+    files <- find_raw(d$path)
+    if (length(files) == 0) return(NULL)
+    rows <- lapply(files, function(f) {
+      st  <- file.info(f)
+      row <- data.frame(`File Name` = basename(f), check.names = FALSE, stringsAsFactors = FALSE)
+      if (two_sources) row[["Source Folder"]] <- d$label
+      row[["Size (MB)"]] <- round(st$size / 1024^2, 2)
+      row[["Size (GB)"]] <- round(st$size / 1024^3, 3)
+      row[["Created"]]   <- format(st$ctime, "%Y-%m-%d %H:%M")
+      row
+    })
+    do.call(rbind, rows)
   })
-  do.call(rbind, rows)
+  all_rows <- Filter(Negate(is.null), all_rows)
+  if (length(all_rows) == 0) return(data.frame())
+  do.call(rbind, all_rows)
 }
 
 parse_log <- function(log_path) {
@@ -270,8 +293,8 @@ run_quality_summary <- function(stats_df) {
     Mean      = round(colMeans(sub, na.rm = TRUE), 4),
     Median    = round(apply(sub, 2, median, na.rm = TRUE), 4),
     `Std Dev` = round(apply(sub, 2, sd,     na.rm = TRUE), 4),
-    Min       = round(apply(sub, 2, min,    na.rm = TRUE), 4),
-    Max       = round(apply(sub, 2, max,    na.rm = TRUE), 4),
+    Min       = round(suppressWarnings(apply(sub, 2, min, na.rm = TRUE)), 4),
+    Max       = round(suppressWarnings(apply(sub, 2, max, na.rm = TRUE)), 4),
     `CV (%)`  = round(
       apply(sub, 2, sd, na.rm = TRUE) / colMeans(sub, na.rm = TRUE) * 100, 2),
     check.names = FALSE, row.names = NULL
@@ -396,7 +419,7 @@ file_description <- function(fname) {
 # REPORT 1  - QC METRICS
 # -----------------------------------------------------------------------------
 
-build_report <- function(project_dir, result_dir, out_path) {
+build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
   cat("\nBuilding Analysis_Report.xlsx ...\n")
   wb    <- createWorkbook(creator = "Kittinun Leetanaporn")
   pname <- basename(project_dir)
@@ -568,10 +591,13 @@ build_report <- function(project_dir, result_dir, out_path) {
 
   # -- DIA-NN run parameters ---------------------------------------------------
   kv <- data.frame(
-    Parameter = c("Project Folder", "Result Folder", "Report Generated", "",
+    Parameter = c("Project Folder", "Result Folder",
+                  if (!is.null(second_dir)) "Chained Folder (raw files)" else NULL,
+                  "Report Generated", "",
                   paste0(rep(" ", nchar("DIA-NN Run Parameters")), collapse = ""),
                   names(log_info)),
     Value = c(project_dir, result_dir,
+              if (!is.null(second_dir)) second_dir else NULL,
               format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "",
               " - DIA-NN Run Parameters  -",
               unlist(log_info)),
@@ -584,7 +610,7 @@ build_report <- function(project_dir, result_dir, out_path) {
            createStyle(textDecoration = "bold", fontColour = CLR_DARK_BLUE),
            rows = r:(r + nrow(kv) - 1), cols = 1,
            gridExpand = TRUE, stack = TRUE)
-  divider_row <- r + 4
+  divider_row <- r + (if (!is.null(second_dir)) 5L else 4L)
   addStyle(wb, "Project Overview",
            createStyle(fgFill = CLR_SECTION, textDecoration = "bold",
                        fontColour = CLR_MID_BLUE),
@@ -596,9 +622,10 @@ build_report <- function(project_dir, result_dir, out_path) {
   # -- Sheet: Raw Files --------------------------------------------------------
   cat("  * Raw file inventory\n")
   addWorksheet(wb, "Raw Files")
-  raw_df <- collect_raw_files(project_dir)
+  raw_df <- collect_raw_files(project_dir, second_dir)
 
   if (nrow(raw_df) > 0) {
+    n_raw_cols <- ncol(raw_df)
     total_mb <- sum(raw_df$`Size (MB)`)
     r2 <- add_title(wb, "Raw Files",
                     "Raw Mass Spectrometry Files",
@@ -608,16 +635,14 @@ build_report <- function(project_dir, result_dir, out_path) {
                             bytes_to_human(mean(raw_df$`Size (MB)`) * 1024^2)))
     end_r2 <- write_table(wb, "Raw Files", raw_df, start_row = r2)
 
-    writeData(wb, "Raw Files",
-              data.frame(
-                A = "TOTAL",
-                B = sprintf("%.2f MB  (%s)", total_mb, bytes_to_human(total_mb * 1024^2)),
-                C = "", D = ""
-              ),
+    total_row <- setNames(as.list(rep("", n_raw_cols)), names(raw_df))
+    total_row[["File Name"]] <- "TOTAL"
+    total_row[["Size (MB)"]] <- sprintf("%.2f MB  (%s)", total_mb, bytes_to_human(total_mb * 1024^2))
+    writeData(wb, "Raw Files", as.data.frame(total_row, check.names = FALSE),
               startRow = end_r2 + 1, startCol = 1, colNames = FALSE)
     addStyle(wb, "Raw Files",
              createStyle(textDecoration = "bold"),
-             rows = end_r2 + 1, cols = 1:4, gridExpand = TRUE, stack = TRUE)
+             rows = end_r2 + 1, cols = seq_len(n_raw_cols), gridExpand = TRUE, stack = TRUE)
 
     raw_note_row <- end_r2 + 3
     writeData(wb, "Raw Files",
@@ -627,14 +652,16 @@ build_report <- function(project_dir, result_dir, out_path) {
     addStyle(wb, "Raw Files",
              createStyle(fontColour = "#595959", textDecoration = "italic",
                          wrapText = TRUE, fontSize = 9),
-             rows = raw_note_row, cols = 1:4, gridExpand = TRUE, stack = TRUE)
-    mergeCells(wb, "Raw Files", cols = 1:4, rows = raw_note_row)
+             rows = raw_note_row, cols = seq_len(n_raw_cols), gridExpand = TRUE, stack = TRUE)
+    mergeCells(wb, "Raw Files", cols = seq_len(n_raw_cols), rows = raw_note_row)
     setRowHeights(wb, "Raw Files", rows = raw_note_row, heights = 28)
   } else {
+    n_raw_cols <- 4L
     writeData(wb, "Raw Files", "No raw files found in project directory.",
               startRow = 1, startCol = 1)
   }
-  setColWidths(wb, "Raw Files", cols = 1:4, widths = c(30, 12, 10, 18))
+  raw_col_widths <- if (n_raw_cols == 5L) c(30, 25, 12, 10, 18) else c(30, 12, 10, 18)
+  setColWidths(wb, "Raw Files", cols = seq_len(n_raw_cols), widths = raw_col_widths)
 
   # -- Sheet: Run Statistics ---------------------------------------------------
   cat("  * Per-sample run statistics\n")
@@ -708,7 +735,7 @@ build_report <- function(project_dir, result_dir, out_path) {
         if (grepl("[/\\\\]", n)) tools::file_path_sans_ext(basename(n)) else n
       }
       qc_short      <- sapply(qc_cols, shorten_name, USE.NAMES = FALSE)
-      qc_groups     <- sub("[_-]\\d+$", "", qc_short)
+      qc_groups     <- sub("[_-]?\\d+$", "", qc_short)
       unique_groups <- unique(qc_groups)
       n_groups      <- length(unique_groups)
       grp_palette   <- c("#2E75B6", "#C00000", "#70AD47", "#ED7D31", "#7030A0")
@@ -845,10 +872,17 @@ build_report <- function(project_dir, result_dir, out_path) {
 
         # Right: overlaid CV% histograms (density scale) + median lines
         all_cv <- unlist(lapply(group_data, function(g) g$cv[is.finite(g$cv)]))
-        cv_xlim <- range(all_cv, na.rm = TRUE)
+        cv_xlim <- if (length(all_cv) > 0) range(all_cv) else c(0, 100)
         first_grp <- unique_groups[1]
         cv_vals   <- group_data[[first_grp]]$cv
         cv_vals   <- cv_vals[is.finite(cv_vals)]
+        if (length(cv_vals) == 0) {
+          plot.new()
+          title(main = "Per-Protein CV% Distribution",
+                xlab = "CV% across QC samples", ylab = "Density")
+          text(0.5, 0.5, "Insufficient overlapping detections\nto compute CV",
+               cex = 0.85, col = "gray50", adj = c(0.5, 0.5))
+        } else {
         hist(cv_vals, breaks = 40, freq = FALSE,
              col  = adjustcolor(group_data[[first_grp]]$color, alpha.f = 0.45),
              border = NA, xlim = cv_xlim,
@@ -859,6 +893,7 @@ build_report <- function(project_dir, result_dir, out_path) {
             grp     <- unique_groups[gi]
             cv_vals <- group_data[[grp]]$cv
             cv_vals <- cv_vals[is.finite(cv_vals)]
+            if (length(cv_vals) == 0) next
             hist(cv_vals, breaks = 40, freq = FALSE, add = TRUE,
                  col = adjustcolor(group_data[[grp]]$color, alpha.f = 0.45),
                  border = NA)
@@ -872,6 +907,7 @@ build_report <- function(project_dir, result_dir, out_path) {
                                function(g) sprintf("%s: %.1f%%", g, group_data[[g]]$med_cv)),
                col = sapply(unique_groups, function(g) group_data[[g]]$color),
                lwd = 2, lty = 2, bty = "n", cex = 0.8)
+        }  # end else (cv_vals non-empty)
 
         mtext("QC Sample Diagnostics", outer = TRUE, cex = 1.1, font = 2)
       }, error = function(e) {
@@ -947,7 +983,7 @@ if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 out_path <- file.path(output_dir, "Analysis_Report.xlsx")
 
-build_report(project_dir, result_dir, out_path)
+build_report(project_dir, result_dir, out_path, second_dir)
 
 cat(sprintf("\n%s\n", sep))
 cat(" Done!\n")
