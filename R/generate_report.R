@@ -4,7 +4,8 @@
 # =============================================================================
 # Generates one Excel file from a DIA-NN project folder:
 #
-#   Analysis_Report.xlsx  - QC metrics (4 sheets) + direct copy of report.pg_matrix.tsv
+#   Analysis_Report.xlsx  - overview + methods, QC sheets, figures, and the
+#                           pg_matrix (with contaminant flags)
 #
 # Expected folder structure
 # -------------------------
@@ -37,20 +38,42 @@ for (pkg in c("openxlsx", "tools")) {
 
 # --- Configuration ------------------------------------------------------------
 RESULT_DIR_NAME <- "Result"
+
+# Signature shown on the report ("Prepared by") and stored as the workbook author
+REPORT_AUTHOR      <- "Kittinun Leetanaporn"
+REPORT_AFFILIATION <- "Proteomics Core Facility"
 RAW_EXTENSIONS  <- c(".raw")
 
-CLR_DARK_BLUE  <- "#1F4E79"
-CLR_MID_BLUE   <- "#2E75B6"
-CLR_LIGHT_BLUE <- "#D9E1F2"
+# --- Theme (workbook + figures) -----------------------------------------------
+CLR_DARK_BLUE  <- "#1F3864"   # navy - titles, table headers
+CLR_MID_BLUE   <- "#2F5496"   # secondary headers, section text
+CLR_LIGHT_BLUE <- "#F2F4F8"   # table row banding
 CLR_WHITE      <- "#FFFFFF"
-CLR_GOOD       <- "#C6EFCE"
-CLR_WARN       <- "#FFEB9C"
-CLR_BAD        <- "#FFC7CE"
-CLR_SECTION    <- "#EEF3FA"
+CLR_GOOD       <- "#E2EFDA"
+CLR_WARN       <- "#FFF2CC"
+CLR_BAD        <- "#FCE4E4"
+CLR_SECTION    <- "#E9EDF4"   # section header band
+CLR_RULE       <- "#BFC9D9"   # thin borders / rules
+CLR_TEXT_MUTED <- "#595959"
+BASE_FONT      <- "Calibri"
 
-PG_META <- c("Protein.Group", "Protein.Names", "Genes",
+# Figure palette
+FIG_MAIN   <- "#2F5496"
+FIG_DARK   <- "#1F3864"
+FIG_ACCENT <- "#C55A11"
+FIG_MUTED  <- "#A6A6A6"
+FIG_GRID   <- "#E7E7E7"
+FIG_TEXT   <- "#404040"
+# Cairo gives clean greyscale anti-aliasing (the Windows device adds colour fringes)
+PNG_TYPE   <- if (isTRUE(capabilities("cairo"))) "cairo" else getOption("bitmapType", "windows")
+
+PG_META <- c("Protein.Group", "Protein.Ids", "Protein.Names", "Genes",
              "First.Protein.Description", "N.Sequences",
              "N.Proteotypic.Sequences")
+
+# Fallback patterns for contaminant protein groups (in addition to the
+# --cont-quant-exclude tag found in the DIA-NN log)
+CONTAM_PATTERNS <- c("cRAP", "^CON__", "Cont_")
 
 # --- Arguments ----------------------------------------------------------------
 args <- commandArgs(trailingOnly = TRUE)
@@ -90,13 +113,51 @@ bytes_to_human <- function(n) {
   sprintf("%.2f PB", n)
 }
 
-get_sample_cols <- function(df) setdiff(names(df), PG_META)
+# Sample columns = numeric columns that are not annotation columns
+get_sample_cols <- function(df) {
+  cand <- setdiff(names(df), c(PG_META, "Contaminant"))
+  cand[vapply(df[cand], is.numeric, logical(1))]
+}
 
-shorten_colnames <- function(df) {
-  names(df) <- sapply(names(df), function(n) {
-    if (grepl("[/\\\\]", n)) tools::file_path_sans_ext(basename(n)) else n
-  })
-  df
+# "D:/runs/QC_01.raw" -> "QC_01"
+shorten_name <- function(n) {
+  if (grepl("[/\\\\]", n)) tools::file_path_sans_ext(basename(n)) else n
+}
+
+# TRUE for contaminant protein groups (log tag or common contaminant prefixes)
+flag_contaminants <- function(pg_df, cont_tag = "n/a") {
+  pats <- CONTAM_PATTERNS
+  if (!is.null(cont_tag) && !identical(cont_tag, "n/a") && nchar(cont_tag) > 0)
+    pats <- c(gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", cont_tag), pats)
+  rx <- paste(pats, collapse = "|")
+  ids <- if ("Protein.Group" %in% names(pg_df)) pg_df$Protein.Group else rep("", nrow(pg_df))
+  grepl(rx, ids, ignore.case = TRUE, perl = TRUE)
+}
+
+# Wrapped, merged paragraph across cols 1:2; returns next free row
+write_paragraph <- function(wb, sheet, text, row, font_size = 10, italic = FALSE,
+                            colour = "#000000", chars_per_line = 120) {
+  writeData(wb, sheet, text, startRow = row, startCol = 1)
+  addStyle(wb, sheet,
+           createStyle(wrapText = TRUE, fontSize = font_size, valign = "top",
+                       fontColour = colour,
+                       textDecoration = if (italic) "italic" else NULL),
+           rows = row, cols = 1:2, gridExpand = TRUE, stack = TRUE)
+  mergeCells(wb, sheet, cols = 1:2, rows = row)
+  n_lines <- max(1, ceiling(nchar(text) / chars_per_line))
+  setRowHeights(wb, sheet, rows = row, heights = max(15, n_lines * (font_size + 4)))
+  row + 1
+}
+
+# Section header row in the house style; returns next free row
+write_section <- function(wb, sheet, title, row) {
+  writeData(wb, sheet, title, startRow = row, startCol = 1)
+  addStyle(wb, sheet,
+           createStyle(fontColour = CLR_MID_BLUE, textDecoration = "bold",
+                       fgFill = CLR_SECTION, fontSize = 12),
+           rows = row, cols = 1:2, gridExpand = TRUE, stack = TRUE)
+  mergeCells(wb, sheet, cols = 1:2, rows = row)
+  row + 1
 }
 
 # -----------------------------------------------------------------------------
@@ -148,7 +209,9 @@ collect_raw_files <- function(project_dir, second_dir = NULL) {
       if (two_sources) row[["Source Folder"]] <- d$label
       row[["Size (MB)"]] <- round(st$size / 1024^2, 2)
       row[["Size (GB)"]] <- round(st$size / 1024^3, 3)
-      row[["Created"]]   <- format(st$ctime, "%Y-%m-%d %H:%M")
+      # mtime: on Windows ctime is when the file was copied/archived, while the
+      # last-modified time stays close to the end of acquisition
+      row[["File Date"]] <- format(st$mtime, "%Y-%m-%d %H:%M")
       row
     })
     do.call(rbind, rows)
@@ -181,6 +244,9 @@ parse_log <- function(log_path) {
     "Missed Cleavages"              = "n/a",
     "N-term Met Excision"           = "n/a",
     "Fixed Modification (Cys)"      = "n/a",
+    "Variable Modifications"        = "n/a",
+    "Max Variable Mods / Peptide"   = "n/a",
+    "Cross-run Normalisation"       = "n/a",
     # --- Mass accuracy ---------------------------------------------------
     "MS2 Mass Accuracy (ppm)"       = "n/a",
     "MS1 Mass Accuracy (ppm)"       = "n/a",
@@ -205,7 +271,7 @@ parse_log <- function(log_path) {
   ver_str <- rx("DIA-NN\\s+([\\d.]+[^\\r\\n]*?)\\n")
   info[["DIA-NN Version"]]             <- ver_str
 
-  info[["FDR Threshold (q-value)"]]    <- rx("--qvalue\\s+([\\d.]+)")
+  info[["FDR Threshold (q-value)"]]    <- rx("--qvalue\\s+([\\d.]+)", default = "0.01 (DIA-NN default)")
   major_ver <- suppressWarnings(as.integer(sub("^(\\d+)\\..*", "\\1", ver_str)))
   info[["Quantification Method"]]      <- if (grepl("--direct-quant", text, fixed = TRUE)) "Legacy"
                                           else if (!is.na(major_ver) && major_ver >= 2) "QuantUMS"
@@ -242,6 +308,27 @@ parse_log <- function(log_path) {
   info[["Fixed Modification (Cys)"]]   <- ifelse(grepl("--unimod4", text),
                                             "Carbamidomethylation (Unimod 4)", "None / not set")
 
+  # --var-mod UniMod:35,15.994915,M  (note: "--var-mods N" is the per-peptide maximum)
+  vm <- unlist(regmatches(text, gregexpr("--var-mod\\s+\\S+", text, perl = TRUE)))
+  if (length(vm) > 0) {
+    unimod_names <- c("UNIMOD:35" = "Oxidation", "UNIMOD:1" = "Acetyl",
+                      "UNIMOD:21" = "Phospho",   "UNIMOD:121" = "GlyGly",
+                      "UNIMOD:7"  = "Deamidation")
+    vm_txt <- vapply(sub("--var-mod\\s+", "", vm), function(x) {
+      parts <- strsplit(x, ",", fixed = TRUE)[[1]]
+      nm    <- unimod_names[toupper(parts[1])]
+      site  <- if (length(parts) >= 3) parts[length(parts)] else ""
+      if (site == "*n") site <- "protein N-term"
+      if (is.na(nm)) x else if (nchar(site) > 0) sprintf("%s (%s)", nm, site) else unname(nm)
+    }, character(1))
+    info[["Variable Modifications"]] <- paste(unique(vm_txt), collapse = "; ")
+  } else {
+    info[["Variable Modifications"]] <- "None"
+  }
+  info[["Max Variable Mods / Peptide"]] <- rx("--var-mods\\s+(\\d+)")
+  info[["Cross-run Normalisation"]]     <- ifelse(grepl("--no-norm", text, fixed = TRUE),
+                                                  "Disabled (--no-norm)", "Enabled (DIA-NN default)")
+
   info[["MS2 Mass Accuracy (ppm)"]]    <- rx("--mass-acc\\s+([\\d.]+)")
   info[["MS1 Mass Accuracy (ppm)"]]    <- rx("--mass-acc-ms1\\s+([\\d.]+)")
 
@@ -250,9 +337,14 @@ parse_log <- function(log_path) {
 
   m_pg <- regmatches(text,
     regexpr("Protein groups with global q-value <= [\\d.]+:\\s*(\\d+)", text, perl = TRUE))
-  if (length(m_pg) > 0)
+  if (length(m_pg) > 0) {
     info[["Protein Groups (q <= 0.01)"]] <-
       as.integer(sub(".*:\\s*(\\d+)$", "\\1", m_pg, perl = TRUE))
+    # Label with the threshold DIA-NN actually reported
+    thr <- sub(".*<= ([\\d.]+):.*", "\\1", m_pg, perl = TRUE)
+    names(info)[names(info) == "Protein Groups (q <= 0.01)"] <-
+      sprintf("Protein Groups (global q <= %s)", thr)
+  }
 
   info
 }
@@ -355,7 +447,8 @@ hs <- function(bg = CLR_DARK_BLUE, fg = CLR_WHITE, bold = TRUE, wrap = TRUE) {
   createStyle(fgFill = bg, fontColour = fg,
               textDecoration = if (bold) "bold" else NULL,
               halign = "center", valign = "center",
-              wrapText = wrap, fontSize = 11)
+              wrapText = wrap, fontSize = 10, fontName = BASE_FONT,
+              border = "TopBottomLeftRight", borderColour = bg)
 }
 
 write_table <- function(wb, sheet, df, start_row = 1, start_col = 1,
@@ -367,13 +460,15 @@ write_table <- function(wb, sheet, df, start_row = 1, start_col = 1,
             startCol    = start_col,
             headerStyle = hs(bg = hdr_bg),
             borders     = "surrounding",
-            borderStyle = "thin")
+            borderStyle = "thin",
+            borderColour = CLR_RULE)
 
 
-  alt <- createStyle(fgFill = CLR_LIGHT_BLUE)
-  for (i in seq(2, nrow(df), by = 2)) {
+  # Alternate row shading (seq(2, 1) would count backwards for a 1-row table)
+  if (nrow(df) >= 2) {
+    alt <- createStyle(fgFill = CLR_LIGHT_BLUE)
     addStyle(wb, sheet, alt,
-             rows = start_row + i,
+             rows = start_row + seq(2, nrow(df), by = 2),
              cols = start_col:(start_col + ncol(df) - 1),
              gridExpand = TRUE, stack = TRUE)
   }
@@ -385,48 +480,242 @@ add_title <- function(wb, sheet, title, subtitle = "", row = 1) {
   writeData(wb, sheet, title, startRow = row, startCol = 1)
   addStyle(wb, sheet,
            createStyle(fontColour = CLR_DARK_BLUE, textDecoration = "bold",
-                       fontSize = 13),
+                       fontSize = 16, fontName = BASE_FONT),
            rows = row, cols = 1)
+  setRowHeights(wb, sheet, rows = row, heights = 26)
+  # Accent rule under the title
+  addStyle(wb, sheet,
+           createStyle(border = "bottom", borderColour = CLR_DARK_BLUE, borderStyle = "medium"),
+           rows = row, cols = 1:6, gridExpand = TRUE, stack = TRUE)
   if (nchar(subtitle) > 0) {
     writeData(wb, sheet, subtitle, startRow = row + 1, startCol = 1)
     addStyle(wb, sheet,
-             createStyle(fontColour = "#595959", textDecoration = "italic",
-                         fontSize = 10),
+             createStyle(fontColour = CLR_TEXT_MUTED, fontSize = 9, fontName = BASE_FONT),
              rows = row + 1, cols = 1)
     return(row + 3)
   }
   row + 2
 }
 
-# -----------------------------------------------------------------------------
-# FILE DESCRIPTION LOOKUP
-# -----------------------------------------------------------------------------
-
-file_description <- function(fname) {
-  if (grepl("pg_matrix", fname, fixed = TRUE))
-    return("Protein group quantification matrix (QuantUMS)  - FINAL RESULT")
-
-  lut <- c(
-    "report.parquet"                      = "Main DIA-NN output  - all precursors/proteins (binary columnar format)",
-    "report.log.txt"                      = "DIA-NN execution log  - parameters, diagnostics, run summary",
-    "report.manifest.txt"                 = "JSON manifest listing output files and their purpose",
-    "report.stats.tsv"                    = "Per-sample statistics: identifications, mass accuracy, RT, charge, etc.",
-    "report.pr_matrix.tsv"                = "Precursor-level quantification matrix",
-    "report.gg_matrix.tsv"                = "Gene group quantification matrix (MaxLFQ/QuantUMS)",
-    "report.unique_genes_matrix.tsv"      = "Proteotypic-gene quantification matrix",
-    "report.protein_description.tsv"      = "Protein annotations and descriptions",
-    "report-first-pass.parquet"           = "Intermediate first-pass DIA-NN output",
-    "report-first-pass.pr_matrix.tsv"     = "First-pass precursor matrix",
-    "report-first-pass.stats.tsv"         = "First-pass per-sample statistics",
-    "report-first-pass.manifest.txt"      = "First-pass manifest",
-    "report-lib.parquet"                  = "Refined spectral library generated from this experiment",
-    "report-lib.parquet.skyline.speclib"  = "Spectral library exported for Skyline",
-    "report_runs.pdf"                     = "PDF: Per-run QC visualisations",
-    "report_trends.pdf"                   = "PDF: Cross-run trend plots"
-  )
-  d <- lut[fname]
-  if (is.na(d)) "DIA-NN output file" else unname(d)
+# Worksheet in the report style: no gridlines on text sheets, signed footer,
+# landscape page setup.
+# NOTE: no tabColour - the installed openxlsx writes a duplicate <worksheet>
+# tag when a tab colour is set, and Excel then has to repair every sheet.
+add_sheet <- function(wb, name, grid = FALSE) {
+  addWorksheet(wb, name, gridLines = grid,
+               footer = c(sprintf("&8Prepared by %s - %s", REPORT_AUTHOR, REPORT_AFFILIATION),
+                          "&8&[Tab]",
+                          "&8Page &[Page] of &[Pages]"))
+  pageSetup(wb, name, orientation = "landscape", fitToWidth = TRUE)
 }
+
+# -----------------------------------------------------------------------------
+# RUN STATISTICS GLOSSARY
+# -----------------------------------------------------------------------------
+
+STATS_GLOSSARY <- c(
+  "Sample"                           = "Sample (raw file) name.",
+  "Precursors.Identified"            = "Precursors (peptide + charge state) identified at 1% FDR in this run.",
+  "Proteins.Identified"              = "Protein groups identified at 1% FDR in this run (run-level count - see the note on the Summary Statistics sheet).",
+  "Total.Quantity"                   = "Sum of all precursor quantities in the run - a rough measure of total signal / amount loaded.",
+  "MS1.Signal"                       = "Total MS1 ion signal recorded in the run.",
+  "MS2.Signal"                       = "Total MS2 ion signal recorded in the run.",
+  "FWHM.Scans"                       = "Median chromatographic peak width (full width at half maximum) in scans. Too few points per peak reduces quantification precision.",
+  "FWHM.RT"                          = "Median chromatographic peak width (full width at half maximum) in minutes.",
+  "Median.Mass.Acc.MS1"              = "Median MS1 mass error (ppm) before DIA-NN recalibration.",
+  "Median.Mass.Acc.MS1.Corrected"    = "Median MS1 mass error (ppm) after recalibration - values close to 0 are good.",
+  "Median.Mass.Acc.MS2"              = "Median MS2 mass error (ppm) before DIA-NN recalibration.",
+  "Median.Mass.Acc.MS2.Corrected"    = "Median MS2 mass error (ppm) after recalibration - values close to 0 are good.",
+  "MS2.Mass.Instability"             = "Spread of the MS2 mass error along the run (ppm). High values suggest calibration drift.",
+  "Normalisation.Instability"        = "How much the normalisation factor varies along the gradient. High values can point to spray or loading problems.",
+  "Median.RT.Prediction.Acc"         = "Median difference (minutes) between observed and predicted retention time - smaller is better.",
+  "Average.Peptide.Length"           = "Average length (amino acids) of identified peptides.",
+  "Average.Peptide.Charge"           = "Average charge state of identified precursors.",
+  "Average.Missed.Tryptic.Cleavages" = "Average number of missed trypsin cleavages per peptide. High values can indicate incomplete digestion."
+)
+
+# -----------------------------------------------------------------------------
+# PER-SAMPLE COMPLETENESS
+# -----------------------------------------------------------------------------
+
+# Protein groups quantified and missing % per sample (contaminants excluded)
+sample_completeness <- function(pg_df, is_cont) {
+  sc  <- get_sample_cols(pg_df)
+  mat <- as.matrix(pg_df[!is_cont, sc, drop = FALSE])
+  mat[mat == 0] <- NA
+  n   <- nrow(mat)
+  q   <- colSums(!is.na(mat))
+  data.frame(
+    Sample                        = vapply(sc, shorten_name, character(1), USE.NAMES = FALSE),
+    `Protein Groups Quantified`   = as.integer(q),
+    `Missing (%)`                 = if (n > 0) round((n - q) / n * 100, 1) else NA_real_,
+    check.names = FALSE, stringsAsFactors = FALSE, row.names = NULL
+  )
+}
+
+# -----------------------------------------------------------------------------
+# FIGURES
+# -----------------------------------------------------------------------------
+
+# Renders one PNG with base graphics; returns the path or NULL on failure
+render_png <- function(width_in, height_in, draw) {
+  f <- normalizePath(tempfile(fileext = ".png"), mustWork = FALSE)
+  png(f, width = round(width_in * 110), height = round(height_in * 110), res = 110, type = PNG_TYPE)
+  ok <- tryCatch({ draw(); TRUE }, error = function(e) {
+    cat(sprintf("  [WARN] Figure rendering failed: %s\n", conditionMessage(e))); FALSE
+  }, finally = dev.off())
+  if (ok && file.exists(f)) f else NULL
+}
+
+# Bottom margin (lines) that fits rotated sample labels
+label_margin <- function(labels) min(12, max(4.5, max(nchar(labels)) * 0.42 + 1))
+
+# Shared base-graphics theme for all figures
+fig_theme <- function(...) {
+  par(family = "sans", bty = "l", las = 1, tcl = -0.25, mgp = c(2.6, 0.55, 0),
+      col.axis = FIG_TEXT, col.lab = FIG_TEXT, col.main = FIG_DARK, fg = FIG_TEXT,
+      font.main = 2, cex.main = 1.05, cex.axis = 0.8, cex.lab = 0.9, ...)
+}
+
+# Bar chart with light horizontal gridlines behind the bars
+fig_bar <- function(values, labels, col, main, ylab, ylim = NULL) {
+  if (is.null(ylim)) ylim <- c(0, max(values, na.rm = TRUE) * 1.08)
+  bp <- barplot(values, names.arg = rep("", length(values)), col = col, border = NA,
+                main = main, ylab = ylab, ylim = ylim, axes = FALSE, space = 0.25)
+  abline(h = axTicks(2), col = FIG_GRID, lwd = 0.8)
+  barplot(values, names.arg = rep("", length(values)), col = col, border = NA,
+          ylim = ylim, axes = FALSE, space = 0.25, add = TRUE)
+  axis(2, at = axTicks(2), col = NA, col.ticks = FIG_TEXT, labels = format(axTicks(2), big.mark = ",", scientific = FALSE))
+  axis(1, at = bp, labels = labels, las = 2, cex.axis = 0.7, col = NA, col.ticks = NA)
+  invisible(bp)
+}
+
+# Adds the Figures sheet. Returns invisibly.
+add_figures_sheet <- function(wb, stats_df, pg_df, is_cont) {
+  sheet <- "Figures"
+  add_sheet(wb, sheet)
+  r <- add_title(wb, sheet, "Figures",
+                 "Overview plots for this experiment. Contaminant protein groups are excluded from the intensity plots.")
+  setColWidths(wb, sheet, cols = 1, widths = 12)
+
+  place <- function(file, caption, note, w, h) {
+    if (is.null(file)) return(invisible(NULL))
+    writeData(wb, sheet, caption, startRow = r, startCol = 1)
+    addStyle(wb, sheet, createStyle(textDecoration = "bold", fontColour = CLR_DARK_BLUE, fontSize = 12),
+             rows = r, cols = 1)
+    writeData(wb, sheet, note, startRow = r + 1, startCol = 1)
+    addStyle(wb, sheet, createStyle(fontColour = "#595959", textDecoration = "italic", fontSize = 9),
+             rows = r + 1, cols = 1)
+    insertImage(wb, sheet, file, startRow = r + 2, startCol = 1, width = w, height = h, units = "in")
+    r <<- r + 2 + ceiling(h * 72 / 15) + 2   # default row = 15 pt
+    invisible(NULL)
+  }
+
+  # Figure 1 - identifications per sample (Run Statistics)
+  if (nrow(stats_df) > 0 && all(c("Precursors.Identified", "Proteins.Identified") %in% names(stats_df))) {
+    labs <- as.character(stats_df[[1]])
+    w <- max(8, min(16, 4 + nrow(stats_df) * 0.25))
+    f <- render_png(w, 5, function() {
+      fig_theme(mfrow = c(1, 2), mar = c(label_margin(labs), 5, 2.5, 0.5))
+      fig_bar(stats_df$Precursors.Identified, labs, FIG_MAIN, "Precursors identified", "Count")
+      fig_bar(stats_df$Proteins.Identified,   labs, FIG_DARK, "Protein groups identified", "Count")
+    })
+    place(f, "Figure 1 - Identifications per sample",
+          "Run-level counts at 1% FDR from DIA-NN (report.stats.tsv). A sample far below the others may indicate a sample or instrument problem.",
+          w, 5)
+  }
+
+  sc <- get_sample_cols(pg_df)
+  if (length(sc) == 0) return(invisible(NULL))
+  labs <- vapply(sc, shorten_name, character(1), USE.NAMES = FALSE)
+  mat  <- as.matrix(pg_df[!is_cont, sc, drop = FALSE])
+  mat[mat == 0] <- NA
+  lmat <- log2(mat)
+  lmat[!is.finite(lmat)] <- NA
+  is_qc <- grepl("qc", labs, ignore.case = TRUE)
+  wide  <- max(8, min(16, 4 + length(sc) * 0.25))
+
+  # Figure 2 - intensity distributions
+  f <- render_png(wide, 5, function() {
+    fig_theme(mar = c(label_margin(labs), 4.5, 2.5, 0.5))
+    box_fill <- ifelse(is_qc, adjustcolor(FIG_ACCENT, 0.35), adjustcolor(FIG_MAIN, 0.25))
+    boxplot(as.data.frame(lmat), names = rep("", length(labs)), outline = FALSE, axes = FALSE,
+            col = box_fill, border = FIG_DARK, medcol = FIG_DARK, whisklty = 1, staplelty = 0,
+            main = "Protein group intensity distribution", ylab = "log2 intensity")
+    abline(h = axTicks(2), col = FIG_GRID, lwd = 0.8)
+    boxplot(as.data.frame(lmat), names = rep("", length(labs)), outline = FALSE, axes = FALSE,
+            col = box_fill, border = FIG_DARK, medcol = FIG_DARK, whisklty = 1, staplelty = 0, add = TRUE)
+    axis(2, col = NA, col.ticks = FIG_TEXT)
+    axis(1, at = seq_along(labs), labels = labs, las = 2, cex.axis = 0.7, col = NA, col.ticks = NA)
+    if (any(is_qc)) legend("topright", c("Sample", "QC"), fill = c(adjustcolor(FIG_MAIN, 0.25), adjustcolor(FIG_ACCENT, 0.35)),
+                           border = FIG_DARK, bty = "n", cex = 0.8)
+  })
+  place(f, "Figure 2 - Intensity distribution per sample",
+        "log2 protein group intensities (pg_matrix). After normalisation the medians should be similar; a shifted box suggests a loading or normalisation problem.",
+        wide, 5)
+
+  # Figure 3 - missing values and data completeness
+  n_pg <- nrow(lmat)
+  if (n_pg > 0) {
+    miss_pct  <- colSums(is.na(lmat)) / n_pg * 100
+    det_frac  <- rowSums(!is.na(lmat)) / ncol(lmat)
+    thresholds <- seq(0, 1, by = 0.05)
+    curve_n   <- vapply(thresholds, function(t) sum(det_frac >= t & det_frac > 0), numeric(1))
+    f <- render_png(wide, 5, function() {
+      fig_theme(mfrow = c(1, 2), mar = c(label_margin(labs), 4.5, 2.5, 0.5))
+      fig_bar(miss_pct, labs, FIG_ACCENT, "Missing values per sample", "Missing protein groups (%)",
+              ylim = c(0, max(10, ceiling(max(miss_pct, na.rm = TRUE) / 10) * 10)))
+      par(mar = c(label_margin(labs), 5, 2.5, 0.5))
+      plot(thresholds * 100, curve_n, type = "n", axes = FALSE,
+           xlab = "Quantified in at least X% of samples", ylab = "Protein groups",
+           main = "Data completeness")
+      abline(h = axTicks(2), v = axTicks(1), col = FIG_GRID, lwd = 0.8)
+      lines(thresholds * 100, curve_n, col = FIG_MAIN, lwd = 2)
+      points(thresholds * 100, curve_n, pch = 19, cex = 0.7, col = FIG_DARK)
+      axis(1, col = NA, col.ticks = FIG_TEXT)
+      axis(2, at = axTicks(2), col = NA, col.ticks = FIG_TEXT, labels = format(axTicks(2), big.mark = ",", scientific = FALSE))
+    })
+    place(f, "Figure 3 - Missing values and data completeness",
+          "Left: share of protein groups not quantified in each sample. Right: how many protein groups are quantified in at least X% of samples (useful when choosing a missing-value filter).",
+          wide, 5)
+  }
+
+  # Figure 4 - sample correlation heatmap
+  if (ncol(lmat) >= 2) {
+    cm <- suppressWarnings(cor(lmat, use = "pairwise.complete.obs"))
+    dimnames(cm) <- list(labs, labs)
+    ord <- seq_len(ncol(cm))
+    if (ncol(cm) > 2 && !anyNA(cm)) ord <- hclust(as.dist(1 - cm))$order
+    cm  <- cm[ord, ord]
+    rng <- range(cm, na.rm = TRUE)
+    side <- max(6, min(12, 3 + ncol(cm) * 0.22))
+    f <- render_png(side + 1.2, side, function() {
+      layout(matrix(c(1, 2), 1), widths = c(side, 1.2))
+      show_labels <- ncol(cm) <= 90
+      lab_cex <- if (ncol(cm) > 40) 0.45 else 0.65
+      lm <- if (show_labels) label_margin(colnames(cm)) * (lab_cex / 0.7) + 1 else 1.5
+      fig_theme(mar = c(lm, lm, 2.5, 0.5))
+      pal <- hcl.colors(64, "Blues 3", rev = TRUE)
+      image(seq_len(ncol(cm)), seq_len(nrow(cm)), cm, col = pal, zlim = rng,
+            axes = FALSE, xlab = "", ylab = "", main = "Sample correlation (Pearson, log2)")
+      if (show_labels) {
+        axis(1, at = seq_len(ncol(cm)), labels = colnames(cm), las = 2, cex.axis = lab_cex, tick = FALSE, line = -0.6)
+        axis(2, at = seq_len(nrow(cm)), labels = rownames(cm), las = 2, cex.axis = lab_cex, tick = FALSE, line = -0.6)
+      }
+      par(mar = c(lm, 0.5, 2.5, 3))
+      image(1, seq(rng[1], rng[2], length.out = 64), matrix(seq(rng[1], rng[2], length.out = 64), 1),
+            col = pal, axes = FALSE, xlab = "", ylab = "")
+      axis(4, las = 1, cex.axis = 0.7)
+      mtext("r", side = 3, line = 0.5, cex = 0.8)
+    })
+    place(f, "Figure 4 - Sample correlation",
+          sprintf("Pearson correlation of log2 intensities (r = %.3f to %.3f), samples ordered by similarity. Replicates should cluster together; an isolated sample may be an outlier.",
+                  rng[1], rng[2]),
+          side + 1.2, side)
+  }
+  invisible(NULL)
+}
+
 
 # -----------------------------------------------------------------------------
 # REPORT 1  - QC METRICS
@@ -434,7 +723,8 @@ file_description <- function(fname) {
 
 build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
   cat("\nBuilding Analysis_Report.xlsx ...\n")
-  wb    <- createWorkbook(creator = "Kittinun Leetanaporn")
+  wb    <- createWorkbook(creator = REPORT_AUTHOR, title = "Proteomics Analysis Report")
+  modifyBaseFont(wb, fontSize = 10, fontName = BASE_FONT)
   pname <- basename(project_dir)
   now   <- format(Sys.time(), "%Y-%m-%d %H:%M")
 
@@ -459,15 +749,26 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
     }
   }
 
+  log_info  <- parse_log(file.path(result_dir, "report.log.txt"))
+  qm        <- log_info[["Quantification Method"]]
+  is_legacy <- isTRUE(qm == "Legacy")
+  qm_label  <- if (qm %in% c("QuantUMS", "MaxLFQ", "Legacy")) qm else "DIA-NN"
+  dn_ver    <- log_info[["DIA-NN Version"]]
+  fdr_txt   <- sub("\\s.*$", "", log_info[["FDR Threshold (q-value)"]])
+  fdr_num   <- suppressWarnings(as.numeric(fdr_txt))
+  if (is.na(fdr_num)) { fdr_num <- 0.01; fdr_txt <- "0.01" }
+  fdr_pct   <- paste0(format(fdr_num * 100, drop0trailing = TRUE), "%")
+  norm_on   <- !grepl("^Disabled", log_info[["Cross-run Normalisation"]])
+
   subtitle_parts <- c(if (nchar(proj_id) > 0) sprintf("Project ID: %s", proj_id),
                       if (nchar(pi_name)  > 0) sprintf("PI: %s",         pi_name),
                       sprintf("Generated: %s", now),
-                      "Instrument software: DIA-NN")
+                      sprintf("Analysis software: DIA-NN%s",
+                              if (identical(dn_ver, "n/a")) "" else paste0(" ", sub("\\s.*$", "", dn_ver))))
 
   # -- Sheet: Project Overview -------------------------------------------------
   cat("  * Project overview & DIA-NN parameters\n")
-  addWorksheet(wb, "Project Overview")
-  log_info <- parse_log(file.path(result_dir, "report.log.txt"))
+  add_sheet(wb, "Project Overview")
 
   r <- add_title(wb, "Project Overview",
                  pname,
@@ -496,22 +797,22 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
   setRowHeights(wb, "Project Overview", rows = r, heights = 30)
   r <- r + 2
 
-  is_legacy <- isTRUE(log_info[["Quantification Method"]] == "Legacy")
-
   sheet_guide <- data.frame(
     Tab = c(
-      "1 \u2014 Project Overview",
-      "2 \u2014 Raw Files",
-      "3 \u2014 Run Statistics",
-      "4 \u2014 Summary Statistics",
-      "5 \u2014 Protein Groups (pg_matrix)   \u2605 FINAL RESULT"
+      "1. Project Overview",
+      "2. Raw Files",
+      "3. Run Statistics",
+      "4. Summary Statistics",
+      "5. Figures",
+      "6. Protein Groups (pg_matrix)   (final result)"
     ),
     Contents = c(
       "DIA-NN analysis parameters, software version, and run metadata.",
-      "MS raw file inventory: file sizes and .quant pairing status.",
-      "Per-sample DIA-NN identification counts, mass accuracy, RT metrics, and run-quality flags.",
-      "Cross-sample means, medians, and CVs for key QC metrics; protein group detection overview.",
-      paste0("Full protein group quantification matrix (", if (is_legacy) "Legacy" else "QuantUMS", " intensities). Primary deliverable for downstream analysis.")
+      "MS raw file inventory: file names, sizes, and file dates (last modified, close to acquisition time).",
+      "Per-sample DIA-NN identification counts, mass accuracy and RT metrics, with a glossary and colour legend.",
+      "Cross-sample QC summary, protein group detection overview, missing values per sample, and QC replicate CVs.",
+      "Plots: identifications per sample, intensity distributions, missing values / completeness, sample correlation.",
+      paste0("Full protein group quantification matrix (", qm_label, " intensities). Primary deliverable for downstream analysis.")
     ),
     stringsAsFactors = FALSE, check.names = FALSE
   )
@@ -528,18 +829,27 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
   r <- r + 1
 
   for (note in c(
-    paste0("\u2022  FINAL RESULT \u2014 The \u2018Protein Groups (pg_matrix)\u2019 tab (Sheet 5) is the ",
+    paste0("\u2022  FINAL RESULT: The 'Protein Groups (pg_matrix)' tab (Sheet 6) is the ",
            "final quantification output and the recommended starting point for all downstream analysis."),
-    paste0("\u2022  LOG2 TRANSFORMATION \u2014 Raw intensities are ",
-           if (is_legacy) "direct (legacy) quantification values" else "QuantUMS values",
+    paste0("\u2022  LOG2 TRANSFORMATION: Raw intensities are ",
+           switch(qm_label, Legacy = "direct (legacy) quantification values", MaxLFQ = "MaxLFQ values",
+                  QuantUMS = "QuantUMS values", "DIA-NN quantities"),
            " on a linear scale. ",
            "Log2 transformation is strongly recommended before statistical testing, PCA, heatmaps, or volcano plots."),
-    paste0("\u2022  MISSING VALUES \u2014 A value of zero or blank means the protein was not detected in that ",
-           "sample (below detection threshold or q-value > 0.01). Treat these as NA or apply imputation before downstream analysis."),
-    paste0("\u2022  Q-VALUE FILTER \u2014 All reported identifications pass DIA-NN\u2019s 1% FDR filter ",
-           "(precursor and protein q-value \u2264 0.01) unless a different threshold is listed in the run parameters below."),
-    paste0("\u26A0  NORMALISATION \u2014 Intensities are already normalised by DIA-NN at the precursor level",
-           if (is_legacy) "." else " (QuantUMS pipeline).")
+    paste0("\u2022  MISSING VALUES: A value of zero or blank means the protein was not detected in that ",
+           "sample (below detection threshold or q-value > ", fdr_txt, "). Treat these as NA or apply imputation before downstream analysis. ",
+           "Missing values per sample are listed on the Summary Statistics sheet."),
+    paste0("\u2022  Q-VALUE FILTER: All reported identifications pass DIA-NN's ", fdr_pct, " FDR filter ",
+           "(precursor and protein q-value <= ", fdr_txt, ")."),
+    paste0("\u2022  CONTAMINANTS: Protein groups from the contaminant database (e.g. cRAP entries such as keratins and trypsin) ",
+           "are counted on the Summary Statistics sheet and left out of the figures. They remain in the pg_matrix; remove them before biological interpretation."),
+    if (norm_on)
+      paste0("\u2022  NORMALISATION: Intensities are already normalised across runs by DIA-NN",
+             if (qm_label == "QuantUMS") " (QuantUMS pipeline)." else ".",
+             " Do not apply a second global normalisation without good reason.")
+    else
+      paste0("\u2022  NORMALISATION: DIA-NN cross-run normalisation was DISABLED for this analysis (--no-norm). ",
+             "Intensities are not normalised; consider normalising before comparing samples.")
   )) {
     writeData(wb, "Project Overview", note, startRow = r, startCol = 1)
     addStyle(wb, "Project Overview",
@@ -552,7 +862,7 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
   r <- r + 1  # blank spacer
 
   disclaimer <- paste0(
-    "Report generated automatically by the Proteomics Core Facility. ",
+    "Report generated automatically by the ", REPORT_AFFILIATION, ". ",
     "For questions, reanalysis requests, or additional statistical support, ",
     "please contact your core facility staff."
   )
@@ -588,12 +898,12 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
     Description = c(
       "UniProt accession of the protein group (leading protein). Primary identifier for matching across databases.",
       "Full protein name(s) for all members of the group.",
-      "HGNC gene symbol(s) associated with the protein group.",
+      "Gene symbol(s) associated with the protein group (as given in the FASTA database).",
       "Functional description of the leading (highest-confidence) protein in the group.",
       "Total number of peptide sequences identified and used for quantification of this protein group.",
       "Number of proteotypic (peptides unique to this protein, not shared with any other) sequences - a measure of identification confidence.",
-      paste0(if (is_legacy) "Legacy" else "QuantUMS",
-             " protein intensity for each sample (column header = sample name). Blank = not detected; treat as NA or apply imputation.")
+      paste0(qm_label,
+             " protein intensity for each sample (column header = raw file name). Blank = not detected; treat as NA or apply imputation.")
     ),
     stringsAsFactors = FALSE, check.names = FALSE
   )
@@ -632,9 +942,20 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
 
   setColWidths(wb, "Project Overview", cols = 1:2, widths = c(45, 85))
 
+  # -- Signature (bottom of the sheet) ----------------------------------------------
+  rs  <- r + nrow(kv) + 2
+  sig <- data.frame(Field = c("Prepared by", "Affiliation", "Date"),
+                    Value = c(REPORT_AUTHOR, REPORT_AFFILIATION, format(Sys.Date(), "%d %B %Y")),
+                    stringsAsFactors = FALSE)
+  writeData(wb, "Project Overview", sig, startRow = rs, startCol = 1, colNames = FALSE)
+  addStyle(wb, "Project Overview", createStyle(textDecoration = "bold", fontColour = CLR_DARK_BLUE),
+           rows = rs:(rs + 2), cols = 1, gridExpand = TRUE, stack = TRUE)
+  addStyle(wb, "Project Overview", createStyle(border = "top", borderColour = CLR_DARK_BLUE),
+           rows = rs, cols = 1:2, gridExpand = TRUE, stack = TRUE)
+
   # -- Sheet: Raw Files --------------------------------------------------------
   cat("  * Raw file inventory\n")
-  addWorksheet(wb, "Raw Files")
+  add_sheet(wb, "Raw Files")
   raw_df <- collect_raw_files(project_dir, second_dir)
 
   if (nrow(raw_df) > 0) {
@@ -659,7 +980,7 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
 
     raw_note_row <- end_r2 + 3
     writeData(wb, "Raw Files",
-              paste0("\u2139  Raw data files (.raw) are not included in the standard delivery. ",
+              paste0("Note: Raw data files (.raw) are not included in the standard delivery. ",
                      "Please contact your core facility staff if you require access to the original raw files."),
               startRow = raw_note_row, startCol = 1)
     addStyle(wb, "Raw Files",
@@ -680,7 +1001,7 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
 
   # -- Sheet: Run Statistics ---------------------------------------------------
   cat("  * Per-sample run statistics\n")
-  addWorksheet(wb, "Run Statistics")
+  add_sheet(wb, "Run Statistics", grid = TRUE)
   stats_res <- load_stats(result_dir)
   stats_df  <- stats_res$df
   stats_src <- stats_res$source
@@ -692,8 +1013,9 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
     r3 <- add_title(wb, "Run Statistics",
                     "DIA-NN Per-Sample Run Statistics",
                     sprintf("Source: %s   |   Samples: %d", stats_src, nrow(stats_df)))
-    write_table(wb, "Run Statistics", stats_df, start_row = r3)
+    end_r3 <- write_table(wb, "Run Statistics", stats_df, start_row = r3)
 
+    rr <- end_r3 + 1
     if ("Proteins.Identified" %in% names(stats_df)) {
       ci    <- which(names(stats_df) == "Proteins.Identified")
       med_p <- median(stats_df$Proteins.Identified, na.rm = TRUE)
@@ -705,6 +1027,39 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
                  createStyle(fgFill = bg),
                  rows = r3 + i, cols = ci, stack = TRUE)
       }
+
+      # Colour legend
+      writeData(wb, "Run Statistics", "Colour legend for Proteins.Identified", startRow = rr, startCol = 1)
+      addStyle(wb, "Run Statistics", createStyle(textDecoration = "bold", fontColour = CLR_DARK_BLUE),
+               rows = rr, cols = 1)
+      legend_rows <- list(
+        list(CLR_GOOD, sprintf("Green  - at least 90%% of the median (%s protein groups)", format(med_p, big.mark = ","))),
+        list(CLR_WARN, "Amber  - 70-90% of the median"),
+        list(CLR_BAD,  "Red    - below 70% of the median: check this sample")
+      )
+      for (k in seq_along(legend_rows)) {
+        addStyle(wb, "Run Statistics", createStyle(fgFill = legend_rows[[k]][[1]]), rows = rr + k, cols = 1)
+        writeData(wb, "Run Statistics", legend_rows[[k]][[2]], startRow = rr + k, startCol = 2)
+      }
+      writeData(wb, "Run Statistics",
+                "Samples are compared with the median of all samples in this report. If the report mixes different sample types, differences may be biological rather than technical.",
+                startRow = rr + 4, startCol = 2)
+      addStyle(wb, "Run Statistics", createStyle(fontColour = "#595959", textDecoration = "italic", fontSize = 9),
+               rows = rr + 4, cols = 2)
+      rr <- rr + 6
+    }
+
+    # Glossary of the columns present
+    gl_cols <- intersect(names(stats_df), names(STATS_GLOSSARY))
+    if (length(gl_cols) > 0) {
+      writeData(wb, "Run Statistics", "Column glossary", startRow = rr, startCol = 1)
+      addStyle(wb, "Run Statistics", createStyle(textDecoration = "bold", fontColour = CLR_DARK_BLUE),
+               rows = rr, cols = 1)
+      gl <- data.frame(Column = gl_cols, Meaning = unname(STATS_GLOSSARY[gl_cols]),
+                       stringsAsFactors = FALSE)
+      writeData(wb, "Run Statistics", gl, startRow = rr + 1, startCol = 1, colNames = FALSE)
+      addStyle(wb, "Run Statistics", createStyle(textDecoration = "bold"),
+               rows = (rr + 1):(rr + nrow(gl)), cols = 1, gridExpand = TRUE, stack = TRUE)
     }
     col_w <- pmin(pmax(nchar(names(stats_df)) + 2, 10), 22)
     setColWidths(wb, "Run Statistics",
@@ -716,7 +1071,7 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
 
   # -- Sheet: Summary Statistics -----------------------------------------------
   cat("  * Summary statistics\n")
-  addWorksheet(wb, "Summary Statistics")
+  add_sheet(wb, "Summary Statistics")
   r4 <- add_title(wb, "Summary Statistics", "Run Quality Summary  - All Samples")
 
   if (nrow(stats_df) > 0) {
@@ -727,7 +1082,8 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
 
   pg_path <- find_pg_matrix(result_dir)
   if (!is.null(pg_path)) {
-    pg_raw <- read.delim(pg_path, stringsAsFactors = FALSE, check.names = FALSE)
+    pg_raw  <- read.delim(pg_path, stringsAsFactors = FALSE, check.names = FALSE)
+    is_cont <- flag_contaminants(pg_raw, log_info[["Contaminant Exclusion Tag"]])
 
     writeData(wb, "Summary Statistics",
               "Protein Group Matrix Overview", startRow = r4, startCol = 1)
@@ -736,20 +1092,49 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
                          textDecoration = "bold"),
              rows = r4, cols = 1, stack = TRUE)
     r4 <- r4 + 1
-    r4 <- write_table(wb, "Summary Statistics", pg_overview(pg_raw),
+    pg_ov <- pg_overview(pg_raw)
+    sc_ov <- get_sample_cols(pg_raw)
+    m_ov  <- as.matrix(pg_raw[, sc_ov, drop = FALSE]); m_ov[m_ov == 0] <- NA
+    pg_ov <- rbind(pg_ov, data.frame(
+      Metric = c("Contaminant Protein Groups (flagged)", "Missing Values, all samples (%)"),
+      Value  = c(sum(is_cont), if (length(m_ov) > 0) round(mean(is.na(m_ov)) * 100, 1) else NA),
+      stringsAsFactors = FALSE))
+    r4 <- write_table(wb, "Summary Statistics", pg_ov,
+                      start_row = r4, hdr_bg = CLR_MID_BLUE)
+
+    # Why these counts differ from Proteins.Identified on Run Statistics
+    count_note <- paste0(
+      "Note: 'Proteins Quantified / Sample' counts protein groups with a non-zero intensity in the final ",
+      "pg_matrix. The matrix is filtered at the experiment-wide (global) protein q-value and can include quantities ",
+      "supported by evidence from other runs (match-between-runs). 'Proteins.Identified' on the Run Statistics ",
+      "sheet is DIA-NN's count of protein groups identified within that run alone, so the two numbers are expected to differ.")
+    writeData(wb, "Summary Statistics", count_note, startRow = r4, startCol = 1)
+    addStyle(wb, "Summary Statistics",
+             createStyle(fontColour = "#595959", textDecoration = "italic", fontSize = 9,
+                         wrapText = TRUE, valign = "top"),
+             rows = r4, cols = 1:7, gridExpand = TRUE, stack = TRUE)
+    mergeCells(wb, "Summary Statistics", cols = 1:7, rows = r4)
+    setRowHeights(wb, "Summary Statistics", rows = r4, heights = 50)
+    r4 <- r4 + 2
+
+    # -- Missing values per sample -----------------------------------------------
+    writeData(wb, "Summary Statistics",
+              "Missing Values per Sample (contaminants excluded)", startRow = r4, startCol = 1)
+    addStyle(wb, "Summary Statistics",
+             createStyle(fgFill = CLR_SECTION, fontColour = CLR_MID_BLUE, textDecoration = "bold"),
+             rows = r4, cols = 1, stack = TRUE)
+    r4 <- r4 + 1
+    r4 <- write_table(wb, "Summary Statistics", sample_completeness(pg_raw, is_cont),
                       start_row = r4, hdr_bg = CLR_MID_BLUE) + 1
 
     # -- QC Sample Metrics ------------------------------------------------------
-    # Find sample columns whose names contain "qc" (case-insensitive)
+    # QC samples = sample columns whose short name (not the full path) contains "qc"
     sc_all  <- get_sample_cols(pg_raw)
-    qc_cols <- grep("qc", sc_all, ignore.case = TRUE, value = TRUE)
+    qc_cols <- sc_all[grepl("qc", vapply(sc_all, shorten_name, character(1)), ignore.case = TRUE)]
     n_qc    <- length(qc_cols)
 
     if (n_qc >= 2) {
-      shorten_name <- function(n) {
-        if (grepl("[/\\\\]", n)) tools::file_path_sans_ext(basename(n)) else n
-      }
-      qc_short      <- sapply(qc_cols, shorten_name, USE.NAMES = FALSE)
+      qc_short      <- vapply(qc_cols, shorten_name, character(1), USE.NAMES = FALSE)
       # Strip a separated replicate number (QC100_1 -> QC100); otherwise strip
       # only a short 1-2 digit suffix (QC1 -> QC) so QC100 / QC200 stay distinct
       qc_groups     <- ifelse(grepl("[_-]\\d+$", qc_short),
@@ -758,7 +1143,7 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
       qc_groups     <- ifelse(qc_groups == "", qc_short, qc_groups)
       unique_groups <- unique(qc_groups)
       n_groups      <- length(unique_groups)
-      grp_palette   <- c("#2E75B6", "#C00000", "#70AD47", "#ED7D31", "#7030A0")
+      grp_palette   <- c(FIG_MAIN, FIG_ACCENT, "#548235", "#7F6000", "#7030A0")
 
       writeData(wb, "Summary Statistics",
                 "QC Sample Metrics", startRow = r4, startCol = 1)
@@ -774,7 +1159,7 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
       ]
       if (length(small_groups) > 0) {
         writeData(wb, "Summary Statistics",
-                  paste0("\u26A0  Warning: fewer than 3 replicates in group(s): ",
+                  paste0("Warning: fewer than 3 replicates in group(s): ",
                          paste(small_groups, collapse = ", "),
                          ". CV% requires >= 3 replicates for reliable interpretation."),
                   startRow = r4, startCol = 1)
@@ -851,7 +1236,7 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
 
       qc_row_ht_pts <- 30L
       n_img_rows    <- if (n_groups == 1L) r4 - qc_table_row else first_grp_end - qc_table_row
-      qc_img_height <- n_img_rows * qc_row_ht_pts / 72
+      qc_img_height <- max(4.5, n_img_rows * qc_row_ht_pts / 72)
       setRowHeights(wb, "Summary Statistics",
                     rows    = qc_table_row:(r4 - 1L),
                     heights = qc_row_ht_pts)
@@ -863,9 +1248,10 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
 
       px_w <- 1000L
       px_h <- round(px_w * qc_img_height / 8)
-      png(qc_plot_file, width = px_w, height = px_h, res = 110)
+      png(qc_plot_file, width = px_w, height = px_h, res = 110, type = PNG_TYPE)
       tryCatch({
-        par(mfrow = c(1, 2), mar = c(5, 3.5, 2.5, 0.5), oma = c(0, 0, 1.2, 0))
+        all_short <- unlist(lapply(unique_groups, function(g) group_data[[g]]$short))
+        fig_theme(mfrow = c(1, 2), mar = c(label_margin(all_short), 4, 2.5, 0.5), oma = c(0, 0, 1.2, 0))
 
         # Left: boxplots colored by group
         box_data  <- list()
@@ -881,14 +1267,18 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
             box_cols  <- c(box_cols,  gd$color)
           }
         }
-        boxplot(box_data, names = box_names, las = 2,
-                col = box_cols, border = "#1F4E79",
-                main = "Intensity Distribution (log2)",
-                ylab = "log2 Intensity", cex.axis = 0.75)
-        if (n_groups > 1)
-          legend("topright", legend = unique_groups,
-                 fill = sapply(unique_groups, function(g) group_data[[g]]$color),
-                 bty = "n", cex = 0.75)
+        # Group colours are explained by the legend in the CV panel
+        boxplot(box_data, names = rep("", length(box_data)), outline = FALSE, axes = FALSE,
+                col = adjustcolor(box_cols, 0.45), border = FIG_DARK, medcol = FIG_DARK,
+                whisklty = 1, staplelty = 0,
+                main = "Intensity distribution (log2)", ylab = "log2 intensity")
+        abline(h = axTicks(2), col = FIG_GRID, lwd = 0.8)
+        boxplot(box_data, names = rep("", length(box_data)), outline = FALSE, axes = FALSE,
+                col = adjustcolor(box_cols, 0.45), border = FIG_DARK, medcol = FIG_DARK,
+                whisklty = 1, staplelty = 0, add = TRUE)
+        axis(2, col = NA, col.ticks = FIG_TEXT)
+        axis(1, at = seq_along(box_names), labels = box_names, las = 2, cex.axis = 0.7,
+             col = NA, col.ticks = NA)
 
         # Right: overlaid CV% histograms (density scale) + median lines
         all_cv <- unlist(lapply(group_data, function(g) g$cv[is.finite(g$cv)]))
@@ -952,37 +1342,58 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
   setColWidths(wb, "Summary Statistics", cols = 1:7,
                widths = c(40, 12, 12, 12, 12, 12, 10))
 
-  # -- Sheet: Protein Groups (pg_matrix) — direct copy -------------------------
+  # -- Sheet: Figures -----------------------------------------------------------
+  cat("  * Figures\n")
+  if (!is.null(pg_path)) {
+    add_figures_sheet(wb, stats_df, pg_raw, is_cont)
+  } else if (nrow(stats_df) > 0) {
+    add_figures_sheet(wb, stats_df, data.frame(), logical(0))
+  }
+
+  # -- Sheet: Protein Groups (pg_matrix) - direct copy -------------------------
   # pg_path and pg_raw already loaded above for Summary Statistics; reuse them
   if (!is.null(pg_path)) {
-    cat("  * Writing protein group matrix (direct copy)\n")
-    pg_df  <- shorten_colnames(pg_raw)
+    # Exact copy of the DIA-NN file (same columns, values and order - no added
+    # columns or highlighting); only the sample headers are reduced from the
+    # full raw-file path to the file name
+    cat("  * Writing protein group matrix (exact copy)\n")
+    pg_df  <- pg_raw
     sc     <- get_sample_cols(pg_df)
-    addWorksheet(wb, "Protein Groups (pg_matrix)")
+    names(pg_df)[match(sc, names(pg_df))] <- vapply(sc, shorten_name, character(1), USE.NAMES = FALSE)
+    sc     <- get_sample_cols(pg_df)
+    add_sheet(wb, "Protein Groups (pg_matrix)", grid = TRUE)
     r6 <- add_title(wb, "Protein Groups (pg_matrix)",
-                    "Protein Group Quantification Matrix (QuantUMS)",
-                    sprintf("Source: %s   |   Protein groups: %d   |   Samples: %d   |   DIA-NN q-value <= 0.01",
-                            basename(pg_path), nrow(pg_df), length(sc)))
-    # Skip per-row alternating style — too slow for large matrices (thousands of addStyle calls)
+                    sprintf("Protein Group Quantification Matrix (%s)", qm_label))
     writeData(wb, "Protein Groups (pg_matrix)", pg_df,
               startRow    = r6,
               startCol    = 1,
               headerStyle = hs(bg = CLR_DARK_BLUE),
-              borders     = "surrounding",
-              borderStyle = "thin")
-    meta_w   <- c(25, 20, 12, 45, 12, 22)[seq_along(intersect(PG_META, names(pg_df)))]
-    sample_w <- rep(18, length(sc))
+              keepNA      = FALSE)
+    col_w <- c(Protein.Group = 25, Protein.Ids = 25, Protein.Names = 20, Genes = 12,
+               First.Protein.Description = 45, N.Sequences = 12,
+               N.Proteotypic.Sequences = 22)
+    widths <- vapply(names(pg_df), function(n) if (n %in% names(col_w)) col_w[[n]] else 18, numeric(1))
     setColWidths(wb, "Protein Groups (pg_matrix)",
-                 cols = seq_along(pg_df), widths = c(meta_w, sample_w))
+                 cols = seq_along(pg_df), widths = unname(widths))
+    freezePane(wb, "Protein Groups (pg_matrix)", firstActiveRow = r6 + 1, firstActiveCol = 2)
   } else {
-    cat("  [WARN] Protein group matrix not found — sheet skipped.\n")
+    cat("  [WARN] Protein group matrix not found - sheet skipped.\n")
   }
 
+  # openxlsx only warns when the target is locked (e.g. open in Excel) and the
+  # old file stays in place - check first and fail loudly instead
+  if (file.exists(out_path)) {
+    con <- tryCatch(suppressWarnings(file(out_path, open = "ab")), error = function(e) NULL)
+    if (is.null(con))
+      stop(sprintf("Cannot write %s - the file is open in another program (close it in Excel and run again).", out_path),
+           call. = FALSE)
+    close(con)
+  }
   saveWorkbook(wb, out_path, overwrite = TRUE)
   cat(sprintf("  OK  Saved -> %s\n", out_path))
 }
 
-# (build_final_results removed — pg_matrix is now Sheet 5 of Analysis_Report.xlsx)
+# (build_final_results removed - pg_matrix is now Sheet 6 of Analysis_Report.xlsx)
 
 # -----------------------------------------------------------------------------
 # MAIN
