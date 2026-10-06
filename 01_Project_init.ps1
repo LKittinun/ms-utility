@@ -3,6 +3,8 @@ $border     = "=" * $w
 $rule       = "-" * $w
 $prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history", "result")
 
+. (Join-Path $PSScriptRoot "lib\Menu.ps1")
+
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host "   [1]  Project folder initializer" -ForegroundColor Cyan
@@ -11,29 +13,8 @@ Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host ""
 
 # -- Confirm ------------------------------------------------------------------
-$cItems = @("Run", "Back to main menu")
-$cSel   = 0
-$cTop   = [Console]::CursorTop
-[Console]::SetCursorPosition(0, $cTop)
-Write-Host ("  > " + $cItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-[Console]::SetCursorPosition(0, $cTop + 1)
-Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
-[Console]::SetCursorPosition(0, $cTop + 2)
-:confirmLoop while ($true) {
-    $ck = [Console]::ReadKey($true)
-    if ($ck.Key -eq [ConsoleKey]::UpArrow -or $ck.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $cSel; $cSel = 1 - $cSel
-        [Console]::SetCursorPosition(0, $cTop + $p)
-        Write-Host ("    " + $cItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkCyan" }) -NoNewline
-        [Console]::SetCursorPosition(0, $cTop + $cSel)
-        Write-Host ("  > " + $cItems[$cSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } elseif ($ck.Key -eq [ConsoleKey]::Enter) {
-        if ($cSel -eq 1) { Clear-Host; .\Main.ps1; return }
-        break confirmLoop
-    } elseif ($ck.Key -eq [ConsoleKey]::Escape) {
-        Clear-Host; .\Main.ps1; return
-    }
-}
+$r = Show-Menu -Items @("Run", "Back to main menu") -AllowEscape
+if ($r.Action -ne "select" -or $r.Index -eq 1) { Clear-Host; .\Main.ps1; return }
 Write-Host ""
 
 # ── Root ──────────────────────────────────────────────────────────────────────
@@ -42,8 +23,72 @@ $root         = if ($_cfg -and $_cfg.Root) { $_cfg.Root } else { "Z:\Proteomics"
 $projectsRoot = Join-Path $root "Projects"
 Write-Host "  Root : $root" -ForegroundColor DarkGray
 
-# ── Column library ────────────────────────────────────────────────────────────
-$colLibFile = ".\data\columns.json"
+# ── Helpers ───────────────────────────────────────────────────────────────────
+$dataDir = Join-Path $PSScriptRoot "data"
+function Save-JsonList($list, [string]$file) {
+    [System.IO.Directory]::CreateDirectory($dataDir) | Out-Null
+    ConvertTo-Json -InputObject @($list) | Out-File $file -Encoding UTF8
+}
+
+function Write-Section([string]$title) {
+    Write-Host ""
+    Write-Host "  $rule" -ForegroundColor DarkCyan
+    Write-Host "  $title" -ForegroundColor Cyan
+    Write-Host "  $rule" -ForegroundColor DarkCyan
+    Write-Host ""
+}
+
+# Spaces -> underscore, strip characters not allowed in folder names
+function ConvertTo-SafeName([string]$s) {
+    return (($s.Trim() -replace '[\s]+', '_') -replace '[<>:"/\\|?*]', '')
+}
+
+# Collapse whitespace + lowercase, for comparing PI names
+function Get-NameKey([string]$s) {
+    return ($s -replace '\s+', ' ').Trim().ToLower()
+}
+
+# Levenshtein edit distance (case-insensitive): fewest single-letter
+# insert/delete/substitute edits turning $a into $b
+function Get-EditDistance([string]$a, [string]$b) {
+    $a = $a.ToLower(); $b = $b.ToLower(); $m = $b.Length + 1
+    $d = New-Object 'int[]' (($a.Length + 1) * $m)
+    for ($i = 0; $i -le $a.Length; $i++) { $d[$i * $m] = $i }
+    for ($j = 0; $j -le $b.Length; $j++) { $d[$j] = $j }
+    for ($i = 1; $i -le $a.Length; $i++) {
+        for ($j = 1; $j -le $b.Length; $j++) {
+            $cost = 1
+            if ($a[$i - 1] -eq $b[$j - 1]) { $cost = 0 }
+            $del = $d[($i - 1) * $m + $j] + 1
+            $ins = $d[$i * $m + $j - 1] + 1
+            $sub = $d[($i - 1) * $m + $j - 1] + $cost
+            $d[$i * $m + $j] = [Math]::Min([Math]::Min($del, $ins), $sub)
+        }
+    }
+    return $d[$a.Length * $m + $b.Length]
+}
+
+# Existing PI that a typed name probably means, or $null:
+#  1. an existing PI appears as a whole word in the typed name
+#     (e.g. "Assoc. Prof. Dr. Raphatphorn Navakanitworakul" -> "Raphatphorn")
+#  2. closest existing PI within 2 edits (1 edit for names under 5 letters)
+function Find-SimilarPI([string]$typed, [string[]]$pis) {
+    $words = @(($typed.ToLower() -split '[^a-z]+') | Where-Object { $_ -ne "" })
+    foreach ($p in $pis) {
+        if ($words.Count -gt 1 -and $words -contains (Get-NameKey $p)) { return $p }
+    }
+    $best = $null; $bestD = [int]::MaxValue
+    foreach ($p in $pis) {
+        $dist = Get-EditDistance (Get-NameKey $typed) (Get-NameKey $p)
+        $limit = 2
+        if ([Math]::Min($typed.Length, $p.Length) -lt 5) { $limit = 1 }
+        if ($dist -le $limit -and $dist -lt $bestD) { $best = $p; $bestD = $dist }
+    }
+    return $best
+}
+
+# ── Libraries ─────────────────────────────────────────────────────────────────
+$colLibFile = Join-Path $dataDir "columns.json"
 $colLib     = @()
 if (Test-Path $colLibFile) {
     $loaded = Get-Content $colLibFile -Raw | ConvertFrom-Json
@@ -52,232 +97,362 @@ if (Test-Path $colLibFile) {
         # Migrate old object format { ColumnID, Description } -> string array
         if ($colLib.Count -gt 0 -and $colLib[0] -is [PSCustomObject]) {
             $colLib = @($colLib | ForEach-Object { $_.Description })
-            if (-not (Test-Path ".\data")) { [System.IO.Directory]::CreateDirectory(".\data") | Out-Null }
-            ConvertTo-Json -InputObject @($colLib) | Out-File $colLibFile -Encoding UTF8
+            Save-JsonList $colLib $colLibFile
         }
     }
 }
 
-# ── Analytics column ID ───────────────────────────────────────────────────────
-Write-Host ""
-Write-Host "  $rule" -ForegroundColor DarkCyan
-Write-Host "  Analytics column" -ForegroundColor Cyan
-Write-Host "  $rule" -ForegroundColor DarkCyan
-Write-Host ""
-
-# Ask: same column (pick from list) or new?
-$scItems = @("Yes - select from previous columns", "No - enter new column ID")
-$scSel   = 0
-$scTop   = [Console]::CursorTop
-[Console]::SetCursorPosition(0, $scTop)
-Write-Host ("  > " + $scItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-[Console]::SetCursorPosition(0, $scTop + 1)
-Write-Host ("    " + $scItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
-[Console]::SetCursorPosition(0, $scTop + 2)
-while ($true) {
-    $k = [Console]::ReadKey($true)
-    if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $scSel; $scSel = 1 - $scSel
-        [Console]::SetCursorPosition(0, $scTop + $p)
-        Write-Host ("    " + $scItems[$p]).PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
-        [Console]::SetCursorPosition(0, $scTop + $scSel)
-        Write-Host ("  > " + $scItems[$scSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } elseif ($k.Key -eq [ConsoleKey]::Enter) {
-        break
-    }
+$trapLibFile = Join-Path $dataDir "trap_columns.json"
+$trapLib     = @()
+if (Test-Path $trapLibFile) {
+    $tLoaded = Get-Content $trapLibFile -Raw | ConvertFrom-Json
+    if ($tLoaded) { $trapLib = @($tLoaded) }
 }
-[Console]::SetCursorPosition(0, $scTop + $scItems.Count)
-Write-Host ""
 
-$analyticsCol      = ""
-$colDesc           = ""
-$colDescFromPicker = $false
-if ($scSel -eq 0) {
-    # Read (ColID, Description) from column_info.json in each column folder, most recent first
-    $prevColPairs = @()
+# All project_info.json files (Projects\<column>\<project>\), newest first.
+# Used for PI and sample subfolder suggestions.
+$allInfos = @()
+if (Test-Path $projectsRoot) {
+    $allInfos = @(
+        Get-ChildItem $projectsRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            Get-ChildItem $_.FullName -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                $jp = Join-Path $_.FullName "project_info.json"
+                if (Test-Path $jp) { try { Get-Content $jp -Raw | ConvertFrom-Json } catch {} }
+            }
+        } | Sort-Object { "$($_.Created)" } -Descending
+    )
+}
+
+# ── Step functions ────────────────────────────────────────────────────────────
+
+# Analytics column: one list of previous columns + "[+ New column ID]".
+# Returns @{ ID; Desc; FromPicker }
+function Select-AnalyticsColumn {
+    $pairs = @()
     if (Test-Path $projectsRoot) {
-        $prevColPairs = @(
+        $pairs = @(
             Get-ChildItem $projectsRoot -Directory |
             Where-Object { $_.Name -match '^\d{4}-\d{2}-\d{2}_' } |
             Sort-Object Name -Descending |
             ForEach-Object {
                 $infoPath = Join-Path $_.FullName "column_info.json"
+                $cid  = $_.Name -replace '^\d{4}-\d{2}-\d{2}_', ''
+                $cdsc = ""
                 if (Test-Path $infoPath) {
-                    $ci   = Get-Content $infoPath -Raw | ConvertFrom-Json
-                    $cid  = if ($ci.ColumnID)    { $ci.ColumnID }    else { $_.Name -replace '^\d{4}-\d{2}-\d{2}_', '' }
-                    $cdsc = if ($ci.Description) { $ci.Description } else { "" }
-                    $lbl  = if ($cdsc) { "$cid  [$cdsc]" } else { $cid }
-                    [PSCustomObject]@{ ID = $cid; Desc = $cdsc; Label = $lbl }
-                } else {
-                    # No column_info.json - fall back to folder name
-                    $cid = $_.Name -replace '^\d{4}-\d{2}-\d{2}_', ''
-                    [PSCustomObject]@{ ID = $cid; Desc = ""; Label = $cid }
+                    $ci = Get-Content $infoPath -Raw | ConvertFrom-Json
+                    if ($ci.ColumnID)    { $cid  = $ci.ColumnID }
+                    if ($ci.Description) { $cdsc = $ci.Description }
                 }
+                $lbl = if ($cdsc) { "$cid  [$cdsc]" } else { $cid }
+                [PSCustomObject]@{ ID = $cid; Desc = $cdsc; Label = $lbl }
             }
         )
     }
-    if ($prevColPairs.Count -eq 0) {
-        Write-Host "  No previous columns found. Enter new column ID." -ForegroundColor Yellow
-        Write-Host ""
-        $analyticsCol = Read-Host "  Column ID (e.g. C20533039, no date prefix)"
-    } else {
-        Write-Host "  Select column:" -ForegroundColor Cyan
-        Write-Host "  (Up/Down: select   Enter: confirm)" -ForegroundColor DarkGray
-        Write-Host ""
 
-        $colIDItems = $prevColPairs
-        $colIDSel   = 0
-        $colIDTop   = [Console]::CursorTop
-
-        function DrawColIDItem($idx, $hl) {
-            [Console]::SetCursorPosition(0, $colIDTop + $idx)
-            $text = ("    " + $colIDItems[$idx].Label).PadRight($w + 4)
-            if ($hl) { Write-Host $text -ForegroundColor Black -BackgroundColor Cyan -NoNewline }
-            else     { Write-Host $text -ForegroundColor White -NoNewline }
-        }
-
-        for ($i = 0; $i -lt $colIDItems.Count; $i++) {
-            DrawColIDItem $i ($i -eq $colIDSel)
-            [Console]::SetCursorPosition(0, $colIDTop + $i + 1)
-        }
-        [Console]::SetCursorPosition(0, $colIDTop + $colIDItems.Count + 1)
-
-        while ($true) {
-            $k = [Console]::ReadKey($true)
-            if ($k.Key -eq [ConsoleKey]::UpArrow) {
-                $prev = $colIDSel; $colIDSel = ($colIDSel - 1 + $colIDItems.Count) % $colIDItems.Count
-                DrawColIDItem $prev $false; DrawColIDItem $colIDSel $true
-            } elseif ($k.Key -eq [ConsoleKey]::DownArrow) {
-                $prev = $colIDSel; $colIDSel = ($colIDSel + 1) % $colIDItems.Count
-                DrawColIDItem $prev $false; DrawColIDItem $colIDSel $true
-            } elseif ($k.Key -eq [ConsoleKey]::Enter) {
-                [Console]::SetCursorPosition(0, $colIDTop + $colIDItems.Count + 1)
-                $analyticsCol      = $colIDItems[$colIDSel].ID
-                $colDesc           = $colIDItems[$colIDSel].Desc
-                $colDescFromPicker = $true
-                break
-            }
-        }
-    }
-} else {
-    $analyticsCol = Read-Host "  Column ID (e.g. C20533039, no date prefix)"
-}
-
-if ($analyticsCol -eq "") {
-    Write-Host "  Analytics column cannot be empty." -ForegroundColor Red
-    Write-Host ""
-    Write-Host "  $rule" -ForegroundColor DarkCyan
-    $nItems = @("Back to main menu", "Exit"); $nSel = 0
-    $nTop = [Console]::CursorTop
-    [Console]::SetCursorPosition(0, $nTop);     Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 1); Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 2)
     while ($true) {
-        $k = [Console]::ReadKey($true)
-        if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-            $p = $nSel; $nSel = 1 - $nSel
-            [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-            [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-            if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-            else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-            return
+        if ($pairs.Count -gt 0) {
+            Write-Host "  Select column:" -ForegroundColor Cyan
+            Write-Host "  (Up/Down: select   Enter: confirm)" -ForegroundColor DarkGray
+            Write-Host ""
+            $items = @($pairs | ForEach-Object { $_.Label }) + @("[+ New column ID]")
+            $r = Show-Menu -Items $items -Special @($items.Count - 1)
+            if ($r.Index -lt $pairs.Count) {
+                $p = $pairs[$r.Index]
+                return [PSCustomObject]@{ ID = $p.ID; Desc = $p.Desc; FromPicker = $true }
+            }
+            Write-Host ""
+        } else {
+            Write-Host "  No previous columns found." -ForegroundColor Yellow
         }
+
+        $hint = if ($pairs.Count -gt 0) { ", blank = back to list" } else { "" }
+        $id   = Read-Host "  New column ID (e.g. C20533039, no date prefix$hint)"
+        $id   = ConvertTo-SafeName ($id -replace '^\s*\d{4}-\d{2}-\d{2}_', '')
+        if ($id -eq "") {
+            if ($pairs.Count -eq 0) { Write-Host "  Column ID cannot be empty - try again." -ForegroundColor Red }
+            Write-Host ""
+            continue
+        }
+        $match = $pairs | Where-Object { $_.ID -ieq $id } | Select-Object -First 1
+        if ($match) {
+            Write-Host "  Column $($match.ID) already exists - using it." -ForegroundColor Yellow
+            return [PSCustomObject]@{ ID = $match.ID; Desc = $match.Desc; FromPicker = $true }
+        }
+        return [PSCustomObject]@{ ID = $id; Desc = ""; FromPicker = $false }
     }
-    return
 }
 
-# ── Column description (library selection) ────────────────────────────────────
-if (-not $colDescFromPicker) {
+# Column description from the library (Del removes from library). Returns string.
+function Select-ColumnDescription([string]$current) {
     Write-Host ""
     Write-Host "  Column description:" -ForegroundColor Cyan
+    if ($current) { Write-Host "  (current: $current)" -ForegroundColor DarkGray }
     Write-Host "  (Up/Down: select   Del: remove from library   Enter: confirm)" -ForegroundColor DarkGray
     Write-Host ""
-}
-
-function DrawDescItem($idx, $hl) {
-    [Console]::SetCursorPosition(0, $descTop + $idx)
-    $isAdd = ($idx -eq $descMenuItems.Count - 1)
-    if ($isAdd) {
-        $text = "    [+ Add new description]".PadRight($w + 4)
-        if ($hl) { Write-Host $text -ForegroundColor Black -BackgroundColor Cyan -NoNewline }
-        else      { Write-Host $text -ForegroundColor DarkYellow -NoNewline }
-    } else {
-        $text = ("    " + $descMenuItems[$idx]).PadRight($w + 4)
-        if ($hl) { Write-Host $text -ForegroundColor Black -BackgroundColor Cyan -NoNewline }
-        else      { Write-Host $text -ForegroundColor White -NoNewline }
-    }
-}
-
-if (-not $colDescFromPicker) { :descLoop while ($true) {
-    if ($colLib.Count -eq 0) {
-        $newDesc = Read-Host "  New description (leave blank to skip)"
-        if ($newDesc -ne "") {
-            $colLib += $newDesc
-            if (-not (Test-Path ".\data")) { [System.IO.Directory]::CreateDirectory(".\data") | Out-Null }
-            ConvertTo-Json -InputObject @($colLib) | Out-File $colLibFile -Encoding UTF8
-            Write-Host "  Saved to description library." -ForegroundColor Green
-        }
-        $colDesc = $newDesc
-        break
-    }
-
-    $descMenuItems = @($colLib) + @("[+ Add new description]")
-    $descSel = 0
-    $descTop = [Console]::CursorTop
-
-    for ($i = 0; $i -lt $descMenuItems.Count; $i++) {
-        DrawDescItem $i ($i -eq $descSel)
-        [Console]::SetCursorPosition(0, $descTop + $i + 1)
-    }
-    [Console]::SetCursorPosition(0, $descTop + $descMenuItems.Count + 1)
-
     while ($true) {
-        $k = [Console]::ReadKey($true)
-        if ($k.Key -eq [ConsoleKey]::UpArrow) {
-            $prev = $descSel; $descSel = ($descSel - 1 + $descMenuItems.Count) % $descMenuItems.Count
-            DrawDescItem $prev $false; DrawDescItem $descSel $true
-        } elseif ($k.Key -eq [ConsoleKey]::DownArrow) {
-            $prev = $descSel; $descSel = ($descSel + 1) % $descMenuItems.Count
-            DrawDescItem $prev $false; DrawDescItem $descSel $true
-        } elseif ($k.Key -eq [ConsoleKey]::Delete) {
-            $isAddItem = ($descSel -eq $descMenuItems.Count - 1)
-            if (-not $isAddItem) {
-                $toRemove = $descMenuItems[$descSel]
-                $colLib = @($colLib | Where-Object { $_ -ne $toRemove })
-                if (-not (Test-Path ".\data")) { [System.IO.Directory]::CreateDirectory(".\data") | Out-Null }
-                ConvertTo-Json -InputObject @($colLib) | Out-File $colLibFile -Encoding UTF8
-                [Console]::SetCursorPosition(0, $descTop + $descMenuItems.Count + 1)
-                Write-Host ""
-                continue descLoop
+        if ($script:colLib.Count -eq 0) {
+            $nd = (Read-Host "  New description (leave blank to skip)").Trim()
+            if ($nd -ne "") {
+                $script:colLib = @($script:colLib) + $nd
+                Save-JsonList $script:colLib $colLibFile
+                Write-Host "  Saved to description library." -ForegroundColor Green
             }
-        } elseif ($k.Key -eq [ConsoleKey]::Enter) {
-            $isAddItem = ($descSel -eq $descMenuItems.Count - 1)
-            [Console]::SetCursorPosition(0, $descTop + $descMenuItems.Count + 1)
-            if ($isAddItem) {
-                Write-Host ""
-                $newDesc = Read-Host "  New description (leave blank to skip)"
-                if ($newDesc -ne "") {
-                    $colLib += $newDesc
-                    if (-not (Test-Path ".\data")) { [System.IO.Directory]::CreateDirectory(".\data") | Out-Null }
-                    ConvertTo-Json -InputObject @($colLib) | Out-File $colLibFile -Encoding UTF8
-                    Write-Host "  Saved to description library." -ForegroundColor Green
-                    continue descLoop
-                } else {
-                    $colDesc = ""
-                    break
-                }
-            } else {
-                $colDesc = $descMenuItems[$descSel]
-                break
+            return $nd
+        }
+        $items = @($script:colLib) + @("[+ Add new description]")
+        $sel   = 0
+        for ($i = 0; $i -lt $script:colLib.Count; $i++) { if ($current -and $script:colLib[$i] -eq $current) { $sel = $i } }
+        $r = Show-Menu -Items $items -Selected $sel -Special @($items.Count - 1) -AllowDelete
+        if ($r.Action -eq "delete") {
+            $rm = $items[$r.Index]
+            $script:colLib = @($script:colLib | Where-Object { $_ -ne $rm })
+            Save-JsonList $script:colLib $colLibFile
+            Write-Host "  Removed '$rm' from library." -ForegroundColor DarkYellow
+            continue
+        }
+        if ($r.Index -lt $script:colLib.Count) { return $items[$r.Index] }
+        Write-Host ""
+        $nd = (Read-Host "  New description (leave blank to skip)").Trim()
+        if ($nd -eq "") { return "" }
+        $script:colLib = @($script:colLib) + $nd
+        Save-JsonList $script:colLib $colLibFile
+        Write-Host "  Saved to description library." -ForegroundColor Green
+    }
+}
+
+# First use date (yyyy-MM-dd), re-asks until valid. Returns string ("" = skip).
+function Read-FirstUseDate {
+    while ($true) {
+        $d = (Read-Host "  First use date (yyyy-MM-dd, leave blank to skip)").Trim()
+        if ($d -eq "") { return "" }
+        $parsed = [datetime]::MinValue
+        if ([datetime]::TryParseExact($d, "yyyy-MM-dd",
+                [System.Globalization.CultureInfo]::InvariantCulture,
+                [System.Globalization.DateTimeStyles]::None, [ref]$parsed)) { return $d }
+        Write-Host "  Invalid format - please enter yyyy-MM-dd (e.g. 2024-03-05)" -ForegroundColor Yellow
+    }
+}
+
+# New project name, re-asks on invalid input. Returns @{ Name; Path } or $null (blank = back).
+function Read-NewProjectName([string]$blankHint = "back") {
+    while ($true) {
+        $raw = Read-Host "  Project name (blank = $blankHint)"
+        if ($raw.Trim() -eq "") { return $null }
+        $name = ConvertTo-SafeName $raw
+        if ($name -eq "") {
+            Write-Host "  Name is empty after removing invalid characters - try again." -ForegroundColor Red
+            continue
+        }
+        if ($prohibited -contains $name.ToLower()) {
+            Write-Host "  '$name' is a reserved name - try another." -ForegroundColor Red
+            continue
+        }
+        $dup = $colProjects | Where-Object { $_.Info.Project -ieq $name } | Select-Object -First 1
+        if ($dup) {
+            Write-Host "  Project '$name' already exists under this column - pick it from the list instead." -ForegroundColor Red
+            continue
+        }
+        $path = Join-Path $analyticsPath ("{0}_{1}" -f (Get-Date -Format "yyyy-MM-dd"), $name)
+        if (Test-Path (Join-Path $path "project_info.json")) {
+            Write-Host "  This project already exists - pick it from the list instead." -ForegroundColor Red
+            continue
+        }
+        if (Test-Path $path) {
+            Write-Host "  WARNING: project folder already exists (no project metadata - will initialize)." -ForegroundColor Yellow
+        }
+        return [PSCustomObject]@{ Name = $name; Path = $path }
+    }
+}
+
+# PI picker: previous PIs (most recent first). Typed names that match an
+# existing PI (ignoring case/spacing) reuse the existing spelling. Returns string.
+function Select-PI([string]$current) {
+    $seen = @{}
+    $pis  = @()
+    foreach ($inf in $allInfos) {
+        if ($inf.PI) {
+            $key = Get-NameKey $inf.PI
+            if (-not $seen.ContainsKey($key)) { $seen[$key] = $true; $pis += ($inf.PI -replace '\s+', ' ').Trim() }
+        }
+    }
+    Write-Host ""
+    Write-Host "  PI:" -ForegroundColor Cyan
+    if ($current) { Write-Host "  (current: $current)" -ForegroundColor DarkGray }
+    Write-Host "  (Up/Down: select   Enter: confirm)" -ForegroundColor DarkGray
+    Write-Host ""
+    $items = @("[ Not specified ]", "[+ New PI]") + @($pis)
+    $sel   = 0
+    for ($i = 0; $i -lt $pis.Count; $i++) { if ($current -and (Get-NameKey $pis[$i]) -eq (Get-NameKey $current)) { $sel = $i + 2 } }
+    $r = Show-Menu -Items $items -Selected $sel -Special @(0, 1)
+    if ($r.Index -eq 0) { return "" }
+    if ($r.Index -ge 2) { return $items[$r.Index] }
+    Write-Host ""
+    $new = ((Read-Host "  New PI name (blank = not specified)") -replace '\s+', ' ').Trim()
+    if ($new -eq "") { return "" }
+    $hit = $pis | Where-Object { (Get-NameKey $_) -eq (Get-NameKey $new) } | Select-Object -First 1
+    if ($hit) {
+        Write-Host "  Matches existing PI '$hit' - using that spelling." -ForegroundColor Yellow
+        return $hit
+    }
+    $similar = Find-SimilarPI $new $pis
+    if ($similar) {
+        Write-Host "  Did you mean '$similar'?" -ForegroundColor Yellow
+        $yr = Show-Menu -Items @("Yes - use '$similar'", "No - keep '$new' as a new PI")
+        if ($yr.Index -eq 0) { return $similar }
+    }
+    return $new
+}
+
+# Trap column ID + description. Returns @{ ID; Desc }
+function Select-TrapColumn([string]$curID, [string]$curDesc) {
+    # Unique (ID, description) pairs used under this analytics column
+    $seen  = @{}
+    $pairs = @()
+    foreach ($cp in $colProjects) {
+        $tid = $cp.Info.TrapColumn
+        if ($tid) {
+            $tdsc = if ($cp.Info.TrapColumnDescription) { $cp.Info.TrapColumnDescription } else { "" }
+            $key  = "$tid|$tdsc"
+            if (-not $seen.ContainsKey($key)) {
+                $seen[$key] = $true
+                $lbl = if ($tdsc) { "$tid  [$tdsc]" } else { $tid }
+                $pairs += [PSCustomObject]@{ ID = $tid; Desc = $tdsc; Label = $lbl }
             }
         }
     }
-    break
-} } # end if (-not $colDescFromPicker)
 
-# ── Resolve analytics column folder (date-prefixed, e.g. 2026-03-02_C20533039) ─
-$colDatePrefix = Get-Date -Format "yyyy-MM-dd"
+    Write-Host ""
+    Write-Host "  Trap column:" -ForegroundColor Cyan
+    if ($curID) { Write-Host "  (current: $curID$(if ($curDesc) { "  [$curDesc]" }))" -ForegroundColor DarkGray }
+    Write-Host "  (Up/Down: select   Enter: confirm)" -ForegroundColor DarkGray
+    Write-Host ""
+    $items = @("[ No trap column ]") + @($pairs | ForEach-Object { $_.Label }) + @("[+ Type new ID]")
+    $sel   = 0
+    if ($curID) {
+        for ($i = 0; $i -lt $pairs.Count; $i++) {
+            if ($pairs[$i].ID -eq $curID -and ($sel -eq 0 -or $pairs[$i].Desc -eq $curDesc)) { $sel = $i + 1 }
+        }
+    }
+    $r = Show-Menu -Items $items -Selected $sel -Special @(0, ($items.Count - 1))
+    if ($r.Index -eq 0) { return [PSCustomObject]@{ ID = ""; Desc = "" } }
+    if ($r.Index -lt $items.Count - 1) {
+        $p = $pairs[$r.Index - 1]
+        return [PSCustomObject]@{ ID = $p.ID; Desc = $p.Desc }
+    }
+
+    Write-Host ""
+    $tid = (Read-Host "  Trap column ID (blank = no trap column)").Trim()
+    if ($tid -eq "") { return [PSCustomObject]@{ ID = ""; Desc = "" } }
+
+    # Description - scoped to descriptions already recorded for this ID
+    $descs = @($colProjects | ForEach-Object { if ($_.Info.TrapColumn -eq $tid) { $_.Info.TrapColumnDescription } } |
+               Where-Object { $_ } | Sort-Object -Unique)
+    Write-Host ""
+    Write-Host "  Trap column description:" -ForegroundColor Cyan
+    Write-Host "  (Up/Down: select   Del: hide from list   Enter: confirm)" -ForegroundColor DarkGray
+    Write-Host ""
+    while ($true) {
+        if ($descs.Count -eq 0) {
+            $nd = (Read-Host "  New description (leave blank to skip)").Trim()
+            if ($nd -ne "") {
+                $script:trapLib = @($script:trapLib) + $nd
+                Save-JsonList $script:trapLib $trapLibFile
+                Write-Host "  Saved to trap column description library." -ForegroundColor Green
+            }
+            return [PSCustomObject]@{ ID = $tid; Desc = $nd }
+        }
+        $dItems = @($descs) + @("[+ Add new description]")
+        $dSel   = 0
+        for ($i = 0; $i -lt $descs.Count; $i++) { if ($curDesc -and $descs[$i] -eq $curDesc) { $dSel = $i } }
+        $r = Show-Menu -Items $dItems -Selected $dSel -Special @($dItems.Count - 1) -AllowDelete
+        if ($r.Action -eq "delete") {
+            $rm    = $dItems[$r.Index]
+            $descs = @($descs | Where-Object { $_ -ne $rm })
+            continue
+        }
+        if ($r.Index -lt $descs.Count) { return [PSCustomObject]@{ ID = $tid; Desc = $dItems[$r.Index] } }
+        Write-Host ""
+        $nd = (Read-Host "  New description (leave blank to skip)").Trim()
+        if ($nd -eq "") { return [PSCustomObject]@{ ID = $tid; Desc = "" } }
+        $descs = @($descs) + $nd
+        $script:trapLib = @($script:trapLib) + $nd
+        Save-JsonList $script:trapLib $trapLibFile
+        Write-Host "  Saved to trap column description library." -ForegroundColor Green
+    }
+}
+
+# Sample subfolder checklist. $existing = folders already in the project
+# (locked, always kept); $preChecked = new folders ticked so far.
+# Suggestions come from subfolder names used in other projects.
+# Returns string array: existing + newly ticked folders.
+function Select-Subfolders([string[]]$existing, [string[]]$preChecked) {
+    $names  = [System.Collections.Generic.List[string]]::new()
+    $checks = [System.Collections.Generic.List[bool]]::new()
+    $locked = [System.Collections.Generic.List[bool]]::new()
+    $index  = @{}
+    function Add-Name([string]$nm, [bool]$chk, [bool]$lck) {
+        $key = $nm.ToLower()
+        if ($index.ContainsKey($key)) {
+            if ($chk) { $checks[$index[$key]] = $true }
+            return
+        }
+        $index[$key] = $names.Count
+        $names.Add($nm); $checks.Add($chk); $locked.Add($lck)
+    }
+    foreach ($nm in @($existing))   { if ($nm) { Add-Name $nm $true $true } }
+    foreach ($nm in @($preChecked)) { if ($nm) { Add-Name $nm $true $false } }
+    foreach ($inf in $allInfos) {
+        foreach ($nm in @($inf.SampleFolders)) {
+            if ($nm -and $prohibited -notcontains "$nm".ToLower()) { Add-Name "$nm" $false $false }
+        }
+    }
+
+    Write-Host ""
+    Write-Host "  Sample subfolders:" -ForegroundColor Cyan
+    Write-Host "  (Space/Enter: tick   Up/Down: move   [ Done ]: confirm)" -ForegroundColor DarkGray
+    Write-Host "  (nothing ticked = single Result\ folder in the project)" -ForegroundColor DarkGray
+    Write-Host ""
+    $sel = 0
+    while ($true) {
+        $n     = $names.Count
+        $items = @($names) + @("[+ Add new subfolder]", "[ Done ]")
+        $chk   = [bool[]](@($checks) + @($false, $false))
+        $lck   = [bool[]](@($locked) + @($false, $false))
+        $r = Show-Menu -Items $items -Selected $sel -Special @($n, ($n + 1)) -Checks $chk -Locked $lck
+        for ($i = 0; $i -lt $n; $i++) { $checks[$i] = $r.Checks[$i] }
+        if ($r.Index -eq $n + 1) { break }
+
+        Write-Host ""
+        $raw    = Read-Host "  New subfolder name(s), comma-separated (blank = back)"
+        $parsed = @($raw -split "," | ForEach-Object { ConvertTo-SafeName $_ } | Where-Object { $_ -ne "" })
+        $reservedHits = @($parsed | Where-Object { $prohibited -contains $_.ToLower() })
+        if ($reservedHits.Count -gt 0) {
+            Write-Host "  Reserved names not allowed as subfolders: $($reservedHits -join ', ')" -ForegroundColor Red
+        }
+        foreach ($nm in $parsed) {
+            if ($prohibited -contains $nm.ToLower()) { continue }
+            if ($index.ContainsKey($nm.ToLower()) -and $locked[$index[$nm.ToLower()]]) {
+                Write-Host "  '$nm' already exists in this project." -ForegroundColor Yellow
+                continue
+            }
+            Add-Name $nm $true $false
+        }
+        Write-Host ""
+        $sel = $names.Count + 1   # land on [ Done ]
+    }
+
+    $result = @(for ($i = 0; $i -lt $names.Count; $i++) { if ($checks[$i]) { $names[$i] } })
+    return ,$result
+}
+
+# ── Analytics column ──────────────────────────────────────────────────────────
+Write-Section "Analytics column"
+$col               = Select-AnalyticsColumn
+$analyticsCol      = $col.ID
+$colDesc           = $col.Desc
+if (-not $col.FromPicker) { $colDesc = Select-ColumnDescription "" }
+
+# Resolve analytics column folder (date-prefixed, e.g. 2026-03-02_C20533039)
 $analyticsPath = $null
 if (Test-Path $projectsRoot) {
     $existingColDir = Get-ChildItem $projectsRoot -Directory |
@@ -286,479 +461,175 @@ if (Test-Path $projectsRoot) {
         Select-Object -First 1
     if ($existingColDir) { $analyticsPath = $existingColDir.FullName }
 }
-if (-not $analyticsPath) { $analyticsPath = Join-Path $projectsRoot "${colDatePrefix}_${analyticsCol}" }
+if (-not $analyticsPath) { $analyticsPath = Join-Path $projectsRoot ("{0}_{1}" -f (Get-Date -Format "yyyy-MM-dd"), $analyticsCol) }
 $logFile = Join-Path $analyticsPath "column_log.csv"
 
-# ── Column info JSON ───────────────────────────────────────────────────────────
+# Column info JSON
 $colInfoFile    = Join-Path $analyticsPath "column_info.json"
 $colInfoData    = $null
 $colInfoChanged = $false
-if (Test-Path $colInfoFile) {
-    $colInfoData = Get-Content $colInfoFile -Raw | ConvertFrom-Json
-}
+if (Test-Path $colInfoFile) { $colInfoData = Get-Content $colInfoFile -Raw | ConvertFrom-Json }
 
 if ($null -eq $colInfoData) {
-    # New column - collect all fields
-    Write-Host ""
-    Write-Host "  $rule" -ForegroundColor DarkCyan
-    Write-Host "  New column detected - enter column details (all optional):" -ForegroundColor Cyan
-    Write-Host "  $rule" -ForegroundColor DarkCyan
-    Write-Host ""
-    do {
-        $colFirstUse = Read-Host "  First use date (yyyy-MM-dd, leave blank to skip)"
-        if ($colFirstUse -eq "") { break }
-        [datetime]$parsedDate = [datetime]::MinValue
-        $valid = [datetime]::TryParseExact($colFirstUse, "yyyy-MM-dd",
-                     [System.Globalization.CultureInfo]::InvariantCulture,
-                     [System.Globalization.DateTimeStyles]::None,
-                     [ref]$parsedDate)
-        if (-not $valid) { Write-Host "  Invalid format - please enter yyyy-MM-dd (e.g. 2024-03-05)" -ForegroundColor Yellow }
-    } while (-not $valid)
+    Write-Section "New column detected - enter column details (all optional):"
+    $colFirstUse    = Read-FirstUseDate
     $colInfoChanged = $true
 } else {
-    # Existing column - carry over fields
-    $colFirstUse = if ($colInfoData.FirstUseDate)  { $colInfoData.FirstUseDate }  else { "" }
+    $colFirstUse = if ($colInfoData.FirstUseDate) { $colInfoData.FirstUseDate } else { "" }
     Write-Host ""
     Write-Host "  Column: $analyticsCol" -ForegroundColor Cyan
 }
 
-# ── Project selection ─────────────────────────────────────────────────────────
-$existingInfo = $null
-$projectPath  = $null
-
-Write-Host ""
-Write-Host "  $rule" -ForegroundColor DarkCyan
-Write-Host "  Project" -ForegroundColor Cyan
-Write-Host "  $rule" -ForegroundColor DarkCyan
-Write-Host ""
-
-$existingDirs = @()
+# Projects already under this column, newest first
+$colProjects = @()
 if (Test-Path $analyticsPath) {
-    $existingDirs = @(
+    $colProjects = @(
         Get-ChildItem $analyticsPath -Directory |
         Where-Object { Test-Path (Join-Path $_.FullName "project_info.json") } |
-        Sort-Object Name -Descending
+        Sort-Object Name -Descending |
+        ForEach-Object {
+            [PSCustomObject]@{ Dir = $_; Info = (Get-Content (Join-Path $_.FullName "project_info.json") -Raw | ConvertFrom-Json) }
+        }
     )
 }
 
-$projIDItems = @("[ New project ]") + @($existingDirs | ForEach-Object {
-    $j   = Get-Content (Join-Path $_.FullName "project_info.json") -Raw | ConvertFrom-Json
-    $lbl = $j.Project
-    if ($j.PI) { $lbl += "  ($($j.PI))" }
-    $lbl
-})
-$projSel = 0
-Write-Host "  (Up/Down: select   Enter: confirm)" -ForegroundColor DarkGray
-Write-Host ""
-$projTop = [Console]::CursorTop
-
-function DrawProjItem($idx, $hl) {
-    [Console]::SetCursorPosition(0, $projTop + $idx)
-    $text = ("    " + $projIDItems[$idx]).PadRight($w + 4)
-    if ($hl)           { Write-Host $text -ForegroundColor Black -BackgroundColor Cyan -NoNewline }
-    elseif ($idx -eq 0){ Write-Host $text -ForegroundColor DarkYellow -NoNewline }
-    else               { Write-Host $text -ForegroundColor White -NoNewline }
-}
-
-for ($i = 0; $i -lt $projIDItems.Count; $i++) {
-    DrawProjItem $i ($i -eq $projSel)
-    [Console]::SetCursorPosition(0, $projTop + $i + 1)
-}
-[Console]::SetCursorPosition(0, $projTop + $projIDItems.Count + 1)
-
+# ── Project selection ─────────────────────────────────────────────────────────
+Write-Section "Project"
+$existingInfo = $null
+$projectPath  = $null
+$projectName  = ""
 while ($true) {
-    $k = [Console]::ReadKey($true)
-    if ($k.Key -eq [ConsoleKey]::UpArrow) {
-        $prev = $projSel; $projSel = ($projSel - 1 + $projIDItems.Count) % $projIDItems.Count
-        DrawProjItem $prev $false; DrawProjItem $projSel $true
-    } elseif ($k.Key -eq [ConsoleKey]::DownArrow) {
-        $prev = $projSel; $projSel = ($projSel + 1) % $projIDItems.Count
-        DrawProjItem $prev $false; DrawProjItem $projSel $true
-    } elseif ($k.Key -eq [ConsoleKey]::Enter) {
-        [Console]::SetCursorPosition(0, $projTop + $projIDItems.Count)
-        Write-Host ""
+    Write-Host "  (Up/Down: select   Enter: confirm)" -ForegroundColor DarkGray
+    Write-Host ""
+    $items = @("[ New project ]") + @($colProjects | ForEach-Object {
+        $lbl = $_.Info.Project
+        if ($_.Info.PI) { $lbl += "  ($($_.Info.PI))" }
+        $lbl
+    })
+    $r = Show-Menu -Items $items -Special @(0)
+    if ($r.Index -gt 0) {
+        $chosen       = $colProjects[$r.Index - 1]
+        $projectPath  = $chosen.Dir.FullName
+        $existingInfo = $chosen.Info
+        $projectName  = $existingInfo.Project
+        Write-Host "  Existing project: $projectName" -ForegroundColor Yellow
+        Write-Host "  (fields are kept unless you change them)" -ForegroundColor DarkGray
         break
     }
-}
-
-$projectName = ""
-if ($projSel -eq 0) {
-    # New project - prompt for name
-    $projectName = Read-Host "  Project name"
-    if ($projectName -eq "") {
-        Write-Host "  Project name cannot be empty." -ForegroundColor Red
-        Write-Host ""
-        Write-Host "  $rule" -ForegroundColor DarkCyan
-        $nItems = @("Back to main menu", "Exit"); $nSel = 0
-        $nTop = [Console]::CursorTop
-        [Console]::SetCursorPosition(0, $nTop);     Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        [Console]::SetCursorPosition(0, $nTop + 1); Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-        [Console]::SetCursorPosition(0, $nTop + 2)
-        while ($true) {
-            $k = [Console]::ReadKey($true)
-            if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-                $p = $nSel; $nSel = 1 - $nSel
-                [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-                [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-            } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-                if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-                else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-                return
-            }
-        }
-        return
-    }
-    $projectName = $projectName -replace '[\s]+', '_' -replace '[<>:"/\\|?*]', ''
-    if ($projectName -eq "") {
-        Write-Host "  Project name is empty after sanitizing invalid characters." -ForegroundColor Red
-        return
-    }
-    if ($prohibited -contains $projectName.ToLower()) {
-        Write-Host "  '$projectName' is a reserved name and cannot be used as a project name." -ForegroundColor Red
-        return
-    }
-    $datePrefix  = Get-Date -Format "yyyy-MM-dd"
-    $projectPath = Join-Path $analyticsPath "${datePrefix}_${projectName}"
-    if (Test-Path $projectPath) {
-        if (Test-Path (Join-Path $projectPath "project_info.json")) {
-            Write-Host "  ERROR: This project already exists. Select it from the existing project list." -ForegroundColor Red
-            return
-        }
-        Write-Host "  WARNING: project folder already exists (no project metadata - will initialize)." -ForegroundColor Yellow
-    }
-} else {
-    # Existing project - load info, no further prompts for fixed fields
-    $chosenDir    = $existingDirs[$projSel - 1]
-    $projectPath  = $chosenDir.FullName
-    $existingInfo = Get-Content (Join-Path $projectPath "project_info.json") -Raw | ConvertFrom-Json
-    $projectName  = $existingInfo.Project
-    Write-Host "  Existing project: $projectName" -ForegroundColor Yellow
-    Write-Host "  (leave fields blank to keep current values)" -ForegroundColor DarkGray
+    Write-Host ""
+    $np = Read-NewProjectName "back to list"
+    if ($np) { $projectName = $np.Name; $projectPath = $np.Path; break }
+    Write-Host ""
 }
 
 # ── PI ────────────────────────────────────────────────────────────────────────
-Write-Host ""
 if ($existingInfo) {
     $pi = if ($existingInfo.PI) { $existingInfo.PI } else { "" }
+    Write-Host ""
     Write-Host "  PI: $(if ($pi) { $pi } else { '(not specified)' })" -ForegroundColor Cyan
 } else {
-    $piRaw = Read-Host "  PI name (leave blank if unknown)"
-    $pi    = $piRaw
+    $pi = Select-PI ""
 }
 
 # ── Trap column ───────────────────────────────────────────────────────────────
-$trapLibFile = ".\data\trap_columns.json"
-$trapLib     = @()
-if (Test-Path $trapLibFile) {
-    $tLoaded = Get-Content $trapLibFile -Raw | ConvertFrom-Json
-    if ($tLoaded) { $trapLib = @($tLoaded) }
-}
-
-# Step 1: Collect unique (TrapColumn, Description) pairs from this analytics column's projects
-$trapColPairs = @()
-if (Test-Path $analyticsPath) {
-    $tSeen     = [System.Collections.Generic.HashSet[string]]::new()
-    $tPairList = [System.Collections.Generic.List[object]]::new()
-    Get-ChildItem $analyticsPath -Recurse -Filter "project_info.json" -File |
-    Sort-Object DirectoryName -Descending |
-    ForEach-Object {
-        $j    = Get-Content $_.FullName -Raw | ConvertFrom-Json
-        $tid  = $j.TrapColumn
-        $tdsc = if ($j.TrapColumnDescription) { $j.TrapColumnDescription } else { "" }
-        if ($tid) {
-            $key = "$tid|$tdsc"
-            if ($tSeen.Add($key)) {
-                $lbl = if ($tdsc) { "$tid  [$tdsc]" } else { $tid }
-                $tPairList.Add([PSCustomObject]@{ ID = $tid; Desc = $tdsc; Label = $lbl })
-            }
-        }
-    }
-    $trapColPairs = @($tPairList)
-}
-
-Write-Host ""
-Write-Host "  Trap column ID:" -ForegroundColor Cyan
-if ($existingInfo) { Write-Host "  (current: $(if ($existingInfo.TrapColumn) { $existingInfo.TrapColumn } else { '(not specified)' }))" -ForegroundColor DarkGray }
-Write-Host "  (Up/Down: select   Enter: confirm)" -ForegroundColor DarkGray
-Write-Host ""
-
-$trapIDItems = @("[ No trap column ]") + @($trapColPairs | ForEach-Object { $_.Label }) + @("[+ Type new ID]")
-$trapIDSel   = 0
-if ($existingInfo -and $existingInfo.TrapColumn) {
-    # Pre-select matching pair (same ID and description)
-    $preLabel = if ($existingInfo.TrapColumnDescription) { "$($existingInfo.TrapColumn)  [$($existingInfo.TrapColumnDescription)]" } else { $existingInfo.TrapColumn }
-    $preIdx   = [array]::IndexOf($trapIDItems, $preLabel)
-    if ($preIdx -lt 0) { $preIdx = [array]::IndexOf($trapIDItems, $existingInfo.TrapColumn) }
-    if ($preIdx -ge 0) { $trapIDSel = $preIdx }
-}
-$trapIDTop = [Console]::CursorTop
-
-function DrawTrapIDItem($idx, $hl) {
-    [Console]::SetCursorPosition(0, $trapIDTop + $idx)
-    $isSpecial = ($idx -eq 0 -or $idx -eq $trapIDItems.Count - 1)
-    $text      = ("    " + $trapIDItems[$idx]).PadRight($w + 4)
-    if ($hl)            { Write-Host $text -ForegroundColor Black -BackgroundColor Cyan -NoNewline }
-    elseif ($isSpecial) { Write-Host $text -ForegroundColor DarkYellow -NoNewline }
-    else                { Write-Host $text -ForegroundColor White -NoNewline }
-}
-
-for ($i = 0; $i -lt $trapIDItems.Count; $i++) {
-    DrawTrapIDItem $i ($i -eq $trapIDSel)
-    [Console]::SetCursorPosition(0, $trapIDTop + $i + 1)
-}
-[Console]::SetCursorPosition(0, $trapIDTop + $trapIDItems.Count + 1)
-
-$trapCol          = ""
-$trapColDesc      = ""
-$trapDescFromPicker = $false
-while ($true) {
-    $k = [Console]::ReadKey($true)
-    if ($k.Key -eq [ConsoleKey]::UpArrow) {
-        $prev = $trapIDSel; $trapIDSel = ($trapIDSel - 1 + $trapIDItems.Count) % $trapIDItems.Count
-        DrawTrapIDItem $prev $false; DrawTrapIDItem $trapIDSel $true
-    } elseif ($k.Key -eq [ConsoleKey]::DownArrow) {
-        $prev = $trapIDSel; $trapIDSel = ($trapIDSel + 1) % $trapIDItems.Count
-        DrawTrapIDItem $prev $false; DrawTrapIDItem $trapIDSel $true
-    } elseif ($k.Key -eq [ConsoleKey]::Enter) {
-        [Console]::SetCursorPosition(0, $trapIDTop + $trapIDItems.Count + 1)
-        if ($trapIDSel -eq 0) {
-            $trapCol = ""
-        } elseif ($trapIDSel -eq $trapIDItems.Count - 1) {
-            Write-Host ""
-            $trapCol = Read-Host "  Trap column ID"
-        } else {
-            $pair               = $trapColPairs[$trapIDSel - 1]
-            $trapCol            = $pair.ID
-            $trapColDesc        = $pair.Desc
-            $trapDescFromPicker = $true
-        }
-        break
-    }
-}
-
-# Step 2: Trap column description - scoped to descriptions recorded for the selected ID
-if ($trapCol -ne "" -and -not $trapDescFromPicker) {
-    # Collect descriptions already used with this specific trap column ID
-    $trapColDescs = @()
-    if (Test-Path $analyticsPath) {
-        $trapColDescs = @(
-            Get-ChildItem $analyticsPath -Recurse -Filter "project_info.json" -File |
-            ForEach-Object {
-                $j = Get-Content $_.FullName -Raw | ConvertFrom-Json
-                if ($j.TrapColumn -eq $trapCol) { $j.TrapColumnDescription }
-            } |
-            Where-Object { $_ -and $_ -ne "" } |
-            Sort-Object -Unique
-        )
-    }
-
-    Write-Host ""
-    Write-Host "  Trap column description:" -ForegroundColor Cyan
-    Write-Host "  (Up/Down: select   Del: hide from list   Enter: confirm)" -ForegroundColor DarkGray
-    Write-Host ""
-
-    :trapDescLoop while ($true) {
-        if ($trapColDescs.Count -eq 0) {
-            $newDesc = Read-Host "  New description (leave blank to skip)"
-            if ($newDesc -ne "") {
-                $trapLib += $newDesc
-                if (-not (Test-Path ".\data")) { [System.IO.Directory]::CreateDirectory(".\data") | Out-Null }
-                ConvertTo-Json -InputObject @($trapLib) | Out-File $trapLibFile -Encoding UTF8
-                Write-Host "  Saved to trap column description library." -ForegroundColor Green
-            }
-            $trapColDesc = $newDesc
-            break
-        }
-
-        $descMenuItems = @($trapColDescs) + @("[+ Add new description]")
-        $descSel = 0
-        if ($existingInfo -and $existingInfo.TrapColumnDescription) {
-            $preIdx = [array]::IndexOf($trapColDescs, $existingInfo.TrapColumnDescription)
-            if ($preIdx -ge 0) { $descSel = $preIdx }
-        }
-        $descTop = [Console]::CursorTop
-
-        for ($i = 0; $i -lt $descMenuItems.Count; $i++) {
-            DrawDescItem $i ($i -eq $descSel)
-            [Console]::SetCursorPosition(0, $descTop + $i + 1)
-        }
-        [Console]::SetCursorPosition(0, $descTop + $descMenuItems.Count + 1)
-
-        while ($true) {
-            $k = [Console]::ReadKey($true)
-            if ($k.Key -eq [ConsoleKey]::UpArrow) {
-                $prev = $descSel; $descSel = ($descSel - 1 + $descMenuItems.Count) % $descMenuItems.Count
-                DrawDescItem $prev $false; DrawDescItem $descSel $true
-            } elseif ($k.Key -eq [ConsoleKey]::DownArrow) {
-                $prev = $descSel; $descSel = ($descSel + 1) % $descMenuItems.Count
-                DrawDescItem $prev $false; DrawDescItem $descSel $true
-            } elseif ($k.Key -eq [ConsoleKey]::Delete) {
-                $isAddItem = ($descSel -eq $descMenuItems.Count - 1)
-                if (-not $isAddItem) {
-                    $toRemove = $descMenuItems[$descSel]
-                    $trapColDescs = @($trapColDescs | Where-Object { $_ -ne $toRemove })
-                    [Console]::SetCursorPosition(0, $descTop + $descMenuItems.Count + 1)
-                    Write-Host ""
-                    continue trapDescLoop
-                }
-            } elseif ($k.Key -eq [ConsoleKey]::Enter) {
-                $isAddItem = ($descSel -eq $descMenuItems.Count - 1)
-                [Console]::SetCursorPosition(0, $descTop + $descMenuItems.Count + 1)
-                if ($isAddItem) {
-                    Write-Host ""
-                    $newDesc = Read-Host "  New description (leave blank to skip)"
-                    if ($newDesc -ne "") {
-                        $trapColDescs += $newDesc
-                        $trapLib += $newDesc
-                        if (-not (Test-Path ".\data")) { [System.IO.Directory]::CreateDirectory(".\data") | Out-Null }
-                        ConvertTo-Json -InputObject @($trapLib) | Out-File $trapLibFile -Encoding UTF8
-                        Write-Host "  Saved to trap column description library." -ForegroundColor Green
-                        continue trapDescLoop
-                    } else {
-                        $trapColDesc = ""
-                        break
-                    }
-                } else {
-                    $trapColDesc = $descMenuItems[$descSel]
-                    break
-                }
-            }
-        }
-        break
-    }
-}
+$curTrap     = if ($existingInfo -and $existingInfo.TrapColumn)            { $existingInfo.TrapColumn }            else { "" }
+$curTrapDesc = if ($existingInfo -and $existingInfo.TrapColumnDescription) { $existingInfo.TrapColumnDescription } else { "" }
+$trap        = Select-TrapColumn $curTrap $curTrapDesc
+$trapCol     = $trap.ID
+$trapColDesc = $trap.Desc
 
 # ── Sample subfolders ─────────────────────────────────────────────────────────
-Write-Host ""
 $existingFolders = if ($existingInfo -and $existingInfo.SampleFolders) { @($existingInfo.SampleFolders) } else { @() }
-if ($existingFolders.Count -gt 0) {
-    Write-Host "  (current: $($existingFolders -join ', '))" -ForegroundColor DarkGray
-}
-$subfolders = @()
-while ($true) {
-    $subfoldersRaw = Read-Host "  Sample subfolders, comma-separated$(if ($existingInfo) { ' (blank to keep, type new to add)' } else { ' (e.g. Plasma,pEV)' })"
-    if ($existingInfo -and $subfoldersRaw -eq "") {
-        $subfolders = $existingFolders
-        break
-    }
-    $parsed = @($subfoldersRaw -split "," | ForEach-Object { ($_.Trim() -replace '[\s]+', '_' -replace '[<>:"/\\|?*]', '') } | Where-Object { $_ -ne "" })
-    # Reserved names
-    $reservedHits = @($parsed | Where-Object { $prohibited -contains $_.ToLower() })
-    if ($reservedHits.Count -gt 0) {
-        Write-Host "  Reserved names not allowed as subfolders: $($reservedHits -join ', ')" -ForegroundColor Red
-        continue
-    }
-    # Duplicates within new input
-    $seen  = @{}
-    $dupes = @()
-    foreach ($sf in $parsed) {
-        $key = $sf.ToLower()
-        if ($seen.ContainsKey($key)) { if ($dupes -notcontains $sf) { $dupes += $sf } }
-        else { $seen[$key] = $true }
-    }
-    if ($dupes.Count -gt 0) {
-        Write-Host "  Duplicate subfolders not allowed: $($dupes -join ', ')" -ForegroundColor Red
-        continue
-    }
-    # Conflicts with already-existing subfolders in JSON
-    $conflicts = @($parsed | Where-Object { $existingFolders -icontains $_ })
-    if ($conflicts.Count -gt 0) {
-        Write-Host "  Already exist in this project: $($conflicts -join ', ')" -ForegroundColor Red
-        continue
-    }
-    $subfolders = @($existingFolders) + @($parsed)
-    break
-}
+$subfolders      = Select-Subfolders $existingFolders @()
 
 # ── Project number + ID ───────────────────────────────────────────────────────
 if ($existingInfo) {
     $projectID = $existingInfo.ProjectID
     $projectNo = $existingInfo.ProjectNo
 } else {
-    $projectNo = 1
-    if (Test-Path $analyticsPath) {
-        $existingProjects = (Get-ChildItem -Path $analyticsPath -Directory |
-            Where-Object { Test-Path (Join-Path $_.FullName "project_info.json") }).Count
-        $projectNo = $existingProjects + 1
-    }
+    $projectNo = $colProjects.Count + 1
     $projectID = -join ((65..90) + (48..57) | Get-Random -Count 8 | ForEach-Object { [char]$_ })
 }
 
-# ── Preview (tree) ────────────────────────────────────────────────────────────
-Write-Host ""
-Write-Host "  $rule" -ForegroundColor DarkCyan
-Write-Host "  Folders to create:" -ForegroundColor Cyan
-Write-Host "  Projects\$(Split-Path $analyticsPath -Leaf)\" -ForegroundColor DarkGray
-Write-Host "  \-- $(Split-Path $projectPath -Leaf)\" -ForegroundColor White
-if ($subfolders.Count -eq 0) {
-    Write-Host "      \-- Result\" -ForegroundColor Gray
-} else {
-    for ($i = 0; $i -lt $subfolders.Count; $i++) {
-        $isLast = ($i -eq $subfolders.Count - 1)
-        $branch = if ($isLast) { "\--" } else { "+--" }
-        $pipe   = if ($isLast) { "    " } else { "|   " }
-        Write-Host "      $branch $($subfolders[$i])\" -ForegroundColor White
-        Write-Host "      $pipe\-- Result\" -ForegroundColor Gray
-    }
-}
-Write-Host ""
-Write-Host "  Column log entry (project no. $projectNo):" -ForegroundColor Cyan
-Write-Host "    ID        : $projectID" -ForegroundColor White
-Write-Host "    PI        : $(if ($pi -eq '') { '(not specified)' } else { $pi })" -ForegroundColor White
-Write-Host "    Analytics : $analyticsCol" -ForegroundColor White
-Write-Host "    Desc      : $(if ($colDesc -eq '') { '(none)' } else { $colDesc })" -ForegroundColor DarkGray
-Write-Host "    Trap      : $(if ($trapCol -eq '') { '(not specified)' } else { $trapCol })" -ForegroundColor White
-Write-Host "    TrapDesc  : $(if ($trapColDesc -eq '') { '(none)' } else { $trapColDesc })" -ForegroundColor DarkGray
-Write-Host "    Project   : $projectName" -ForegroundColor White
-if ($colInfoChanged) {
-    Write-Host ""
-    Write-Host "  New column_info.json:" -ForegroundColor Cyan
-    Write-Host "    First use date: $(if ($colFirstUse -eq '') { '(not specified)' } else { $colFirstUse })" -ForegroundColor White
-}
-$rawCount = @(Get-ChildItem -Path $projectPath -Recurse -Filter "*.raw" -File -ErrorAction SilentlyContinue).Count
-if ($rawCount -gt 0) {
-    Write-Host ""
-    Write-Host "  Note: $rawCount .raw file(s) exist in this folder - they will not be affected." -ForegroundColor DarkYellow
-}
-Write-Host ""
-
-Write-Host "  $rule" -ForegroundColor DarkCyan
-$cItems = @("Yes, create folders", "No, cancel")
-$cSel   = 0
-$cTop   = [Console]::CursorTop
-[Console]::SetCursorPosition(0, $cTop);     Write-Host ("  > " + $cItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-[Console]::SetCursorPosition(0, $cTop + 1); Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-[Console]::SetCursorPosition(0, $cTop + 2)
+# ── Preview (tree) + edit loop ────────────────────────────────────────────────
 while ($true) {
-    $k = [Console]::ReadKey($true)
-    if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $cSel; $cSel = 1 - $cSel
-        [Console]::SetCursorPosition(0, $cTop + $p);    Write-Host ("    " + $cItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-        [Console]::SetCursorPosition(0, $cTop + $cSel); Write-Host ("  > " + $cItems[$cSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-        [Console]::SetCursorPosition(0, $cTop + 2)
-        if ($k.Key -ne [ConsoleKey]::Escape -and $cSel -eq 0) { break }
-        Write-Host "  Cancelled." -ForegroundColor DarkYellow
-        Write-Host ""
-        Write-Host "  $rule" -ForegroundColor DarkCyan
-        $nItems = @("Back to main menu", "Exit"); $nSel = 0
-        $nTop = [Console]::CursorTop
-        [Console]::SetCursorPosition(0, $nTop);     Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        [Console]::SetCursorPosition(0, $nTop + 1); Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-        [Console]::SetCursorPosition(0, $nTop + 2)
-        while ($true) {
-            $k2 = [Console]::ReadKey($true)
-            if ($k2.Key -eq [ConsoleKey]::UpArrow -or $k2.Key -eq [ConsoleKey]::DownArrow) {
-                $p = $nSel; $nSel = 1 - $nSel
-                [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-                [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-            } elseif ($k2.Key -eq [ConsoleKey]::Enter -or $k2.Key -eq [ConsoleKey]::Escape) {
-                if ($k2.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-                else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-                return
-            }
+    Write-Host ""
+    Write-Host "  $rule" -ForegroundColor DarkCyan
+    Write-Host "  Folders to create:" -ForegroundColor Cyan
+    Write-Host "  Projects\$(Split-Path $analyticsPath -Leaf)\" -ForegroundColor DarkGray
+    Write-Host "  \-- $(Split-Path $projectPath -Leaf)\" -ForegroundColor White
+    if ($subfolders.Count -eq 0) {
+        Write-Host "      \-- Result\" -ForegroundColor Gray
+    } else {
+        for ($i = 0; $i -lt $subfolders.Count; $i++) {
+            $isLast = ($i -eq $subfolders.Count - 1)
+            $branch = if ($isLast) { "\--" } else { "+--" }
+            $pipe   = if ($isLast) { "    " } else { "|   " }
+            Write-Host "      $branch $($subfolders[$i])\" -ForegroundColor White
+            Write-Host "      $pipe\-- Result\" -ForegroundColor Gray
         }
+    }
+    Write-Host ""
+    Write-Host "  Column log entry (project no. $projectNo):" -ForegroundColor Cyan
+    Write-Host "    ID        : $projectID" -ForegroundColor White
+    Write-Host "    PI        : $(if ($pi -eq '') { '(not specified)' } else { $pi })" -ForegroundColor White
+    Write-Host "    Analytics : $analyticsCol" -ForegroundColor White
+    Write-Host "    Desc      : $(if ($colDesc -eq '') { '(none)' } else { $colDesc })" -ForegroundColor DarkGray
+    Write-Host "    Trap      : $(if ($trapCol -eq '') { '(not specified)' } else { $trapCol })" -ForegroundColor White
+    Write-Host "    TrapDesc  : $(if ($trapColDesc -eq '') { '(none)' } else { $trapColDesc })" -ForegroundColor DarkGray
+    Write-Host "    Project   : $projectName" -ForegroundColor White
+    if ($colInfoChanged) {
+        Write-Host ""
+        Write-Host "  New column_info.json:" -ForegroundColor Cyan
+        Write-Host "    First use date: $(if ($colFirstUse -eq '') { '(not specified)' } else { $colFirstUse })" -ForegroundColor White
+    }
+    $rawCount = @(Get-ChildItem -Path $projectPath -Recurse -Filter "*.raw" -File -ErrorAction SilentlyContinue).Count
+    if ($rawCount -gt 0) {
+        Write-Host ""
+        Write-Host "  Note: $rawCount .raw file(s) exist in this folder - they will not be affected." -ForegroundColor DarkYellow
+    }
+    Write-Host ""
+    Write-Host "  $rule" -ForegroundColor DarkCyan
+
+    $r = Show-Menu -Items @("Yes, create folders", "Edit a field", "No, cancel") -AllowEscape
+    if ($r.Action -eq "cancel" -or $r.Index -eq 2) {
+        Write-Host "  Cancelled." -ForegroundColor DarkYellow
+        Write-Host "  $rule" -ForegroundColor DarkCyan
+        Show-NavExit
         return
+    }
+    if ($r.Index -eq 0) { break }
+
+    # -- Edit a field --
+    $fields = @()
+    if (-not $existingInfo) { $fields += "Project name" }
+    $fields += @("PI", "Trap column", "Sample subfolders")
+    if ($colInfoChanged)    { $fields += @("Column description", "Column first use date") }
+    $fields += "[ Back to preview ]"
+    Write-Host ""
+    Write-Host "  Which field?" -ForegroundColor Cyan
+    Write-Host "  (analytics column cannot be changed here - cancel and start again)" -ForegroundColor DarkGray
+    Write-Host ""
+    $fr = Show-Menu -Items $fields -Special @($fields.Count - 1) -AllowEscape
+    if ($fr.Action -eq "cancel") { continue }
+    switch ($fields[$fr.Index]) {
+        "Project name" {
+            Write-Host ""
+            $np = Read-NewProjectName "keep '$projectName'"
+            if ($np) { $projectName = $np.Name; $projectPath = $np.Path }
+        }
+        "PI" { $pi = Select-PI $pi }
+        "Trap column" {
+            $trap        = Select-TrapColumn $trapCol $trapColDesc
+            $trapCol     = $trap.ID
+            $trapColDesc = $trap.Desc
+        }
+        "Sample subfolders" {
+            $newOnes    = @($subfolders | Where-Object { $existingFolders -inotcontains $_ })
+            $subfolders = Select-Subfolders $existingFolders $newOnes
+        }
+        "Column description"    { $colDesc = Select-ColumnDescription $colDesc }
+        "Column first use date" { Write-Host ""; $colFirstUse = Read-FirstUseDate }
     }
 }
 
@@ -779,23 +650,7 @@ try {
     Write-Host "  No files were written." -ForegroundColor Red
     Write-Host ""
     Write-Host "  $rule" -ForegroundColor DarkCyan
-    $nItems = @("Back to main menu", "Exit"); $nSel = 0
-    $nTop = [Console]::CursorTop
-    [Console]::SetCursorPosition(0, $nTop);     Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 1); Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 2)
-    while ($true) {
-        $k = [Console]::ReadKey($true)
-        if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-            $p = $nSel; $nSel = 1 - $nSel
-            [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-            [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-            if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-            else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-            return
-        }
-    }
+    Show-NavExit
     return
 }
 
@@ -892,25 +747,6 @@ Write-Host "  Log       : $logFile" -ForegroundColor DarkCyan
 Write-Host "  $border" -ForegroundColor DarkCyan
 
 # ── Navigation ────────────────────────────────────────────────────────────────
-$nItems = @("Back to main menu", "Exit")
-$nSel   = 0
 Write-Host ""
 Write-Host "  $rule" -ForegroundColor DarkCyan
-$nTop = [Console]::CursorTop
-[Console]::SetCursorPosition(0, $nTop)
-Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-[Console]::SetCursorPosition(0, $nTop + 1)
-Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-[Console]::SetCursorPosition(0, $nTop + 2)
-while ($true) {
-    $k = [Console]::ReadKey($true)
-    if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $nSel; $nSel = 1 - $nSel
-        [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-        [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-        if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-        else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-        return
-    }
-}
+Show-NavExit
