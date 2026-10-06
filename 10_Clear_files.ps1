@@ -34,8 +34,9 @@ Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoN
 }
 Write-Host ""
 
-$path = Read-Host "Insert directory, leave blank for a current location"
-if ($path -eq "") { $path = (Get-Location).Path }
+. (Join-Path $PSScriptRoot "lib\Pickers.ps1")
+$path = Read-FolderPath "Select the folder to clear .sld / .meth files from"
+if ($path -eq "") { Clear-Host; .\Main.ps1; return }
 $files = Get-ChildItem -Path $path -Recurse -Include "*.sld", "*.meth" -File
 
 if ($files.Count -eq 0) {

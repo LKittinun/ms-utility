@@ -96,7 +96,8 @@ while ($true) {
         }
         if ($chosen.Script -eq "__SET_ROOT__") {
             [Console]::SetCursorPosition(0, $menuTop + $entries.Count + 6)
-            $newRoot = Read-Host "  New root directory (blank = keep $currentRoot)"
+            . (Join-Path $PSScriptRoot "lib\Pickers.ps1")
+            $newRoot = Read-FolderPath "Select the new root directory (Cancel = keep current)" $currentRoot
             if ($newRoot -ne "") { $currentRoot = $newRoot }
             [pscustomobject]@{ Root = $currentRoot } | ConvertTo-Json | Out-File $configFile -Encoding UTF8
             Clear-Host; .\Main.ps1; return

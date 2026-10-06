@@ -51,17 +51,26 @@ if (-not (Test-Path $root)) {
 }
 
 # -- Source / destination -----------------------------------------------------
-Write-Host "  Source root : $root" -ForegroundColor DarkGray
-$sourceInput = Read-Host "  Source subfolder (blank = all projects)"
-$source      = if ($sourceInput -ne "") { Join-Path $root $sourceInput.Trim("\") } else { $root }
-if (-not (Test-Path $source)) {
+. (Join-Path $PSScriptRoot "lib\Pickers.ps1")
+Write-Host "  Source root : $root  (select it to archive all projects)" -ForegroundColor DarkGray
+$source = Read-FolderPath "Select the source folder to archive" $root
+if ($source -eq "") { Clear-Host; .\Main.ps1; return }
+$source = $source.TrimEnd("\")
+# Source must be inside the Projects root so the archive mirrors its structure
+if (-not ($source -ieq $root.TrimEnd("\") -or $source.StartsWith($root.TrimEnd("\") + "\", [System.StringComparison]::OrdinalIgnoreCase))) {
+    Write-Host "  [ERROR] Source must be inside $root" -ForegroundColor Red
+    Write-Host ""
+    pause
+    Clear-Host; .\Main.ps1; return
+}
+if (-not (Test-Path -LiteralPath $source)) {
     Write-Host "  [ERROR] Path not found: $source" -ForegroundColor Red
     Write-Host ""
     pause
     Clear-Host; .\Main.ps1; return
 }
-Write-Host "  Source : $source" -ForegroundColor DarkGray
-$archiveDest = Read-Host "  Archive destination (e.g. E:\Raw_Archive)"
+Write-Host ""
+$archiveDest = Read-FolderPath "Select the archive destination (e.g. E:\Raw_Archive)" -NoStart
 if ($archiveDest -eq "") {
     Write-Host "  Cancelled." -ForegroundColor DarkYellow
     Write-Host ""

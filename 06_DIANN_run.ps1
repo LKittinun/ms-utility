@@ -61,8 +61,9 @@ if (-not (Test-Path $diannCfg.DiannExe)) {
 }
 
 # -- Path input ---------------------------------------------------------------
-$path = Read-Host "  Project directory (blank = current location)"
-if ($path -eq "") { $path = (Get-Location).Path }
+. (Join-Path $PSScriptRoot "lib\Pickers.ps1")
+$path = Read-FolderPath "Select the project folder"
+if ($path -eq "") { Clear-Host; .\Main.ps1; return }
 
 if (-not (Test-Path $path)) {
     Write-Host "  Path not found: $path" -ForegroundColor Red

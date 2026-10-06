@@ -42,8 +42,9 @@ if (-not (Get-Command msconvert -ErrorAction SilentlyContinue)) {
 }
 
 $first_path = Get-Location
-$path = Read-Host "Set the path to the directory containing the .raw files, leave blank for a current location"
-if ($path -eq "") { $path = (Get-Location).Path }
+. (Join-Path $PSScriptRoot "lib\Pickers.ps1")
+$path = Read-FolderPath "Select the folder containing the .raw files"
+if ($path -eq "") { Clear-Host; .\Main.ps1; return }
 Set-location -Path $path
 
 $demux = Read-Host "Demultiplex? y = yes, otherwise = no"

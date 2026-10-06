@@ -58,13 +58,13 @@ Write-Host ""
 $mostRecent = Get-ChildItem -Path $root -Filter "Projects_overview_*.csv" -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
+. (Join-Path $PSScriptRoot "lib\Pickers.ps1")
 if ($mostRecent) {
-    Write-Host "  Most recent: $($mostRecent.Name)" -ForegroundColor DarkGray
-    $csvPath = (Read-Host "  CSV path (blank = use above)").Trim()
-    if ($csvPath -eq "") { $csvPath = $mostRecent.FullName }
-} else {
-    $csvPath = (Read-Host "  CSV path").Trim()
+    Write-Host "  Most recent: $($mostRecent.Name)  (pre-selected)" -ForegroundColor DarkGray
 }
+$csvStart = if ($mostRecent) { $mostRecent.FullName } else { $root }
+$csvPath  = Read-FilePath "Select the edited overview CSV" $csvStart "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
+if ($csvPath -eq "") { Clear-Host; .\Main.ps1; return }
 
 function Show-NavExit ($msg) {
     Write-Host ""

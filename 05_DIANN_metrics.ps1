@@ -35,8 +35,9 @@ Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoN
 Write-Host ""
 
 $first_path = Get-Location
-$path = Read-Host "Insert project directory, leave blank for current location"
-if ($path -eq "") { $path = (Get-Location).Path }
+. (Join-Path $PSScriptRoot "lib\Pickers.ps1")
+$path = Read-FolderPath "Select the project folder"
+if ($path -eq "") { Clear-Host; .\Main.ps1; return }
 
 # Detect subfolders that contain a Result\ subfolder with DIA-NN output
 $subfolders = Get-ChildItem -Path $path -Directory |

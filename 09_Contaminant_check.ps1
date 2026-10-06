@@ -43,8 +43,9 @@ if (-not (Test-Path $mzsnifferPath)) {
     Write-Host ""; return
 }
 
-$path = Read-Host "Insert directory, leave blank for a current location"
-if ($path -eq "") { $path = (Get-Location).Path }
+. (Join-Path $PSScriptRoot "lib\Pickers.ps1")
+$path = Read-FolderPath "Select the folder containing the .mzML files"
+if ($path -eq "") { Clear-Host; .\Main.ps1; return }
 Set-location -Path $path
 
 $files           = Get-ChildItem "*.mzML" | Sort-Object LastWriteTime

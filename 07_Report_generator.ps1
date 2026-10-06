@@ -37,26 +37,55 @@ Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoN
 }
 Write-Host ""
 
-$first_path = Get-Location
-$raw = Read-Host "Insert project directory, leave blank for current location (use ; to chain two folders)"
-if ($raw -eq "") { $raw = $first_path.Path }
-$parts = @($raw -split ";" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
-if ($parts.Count -eq 0) { $parts = @($first_path.Path) }
-$path  = $parts[0]
-$path2 = if ($parts.Count -ge 2) { $parts[1] } else { "" }
+# -- Folder selection ---------------------------------------------------------
+. (Join-Path $PSScriptRoot "lib\Pickers.ps1")
+$path = Read-FolderPath "Select the project folder"
+if ($path -eq "") { Clear-Host; .\Main.ps1; return }
+Write-Host ""
+
+# Optional extra folder holding raw files (e.g. archived to external HDD)
+$path2  = ""
+Write-Host "  Raw files in another folder too? (e.g. archived to external HDD)" -ForegroundColor Cyan
+$xItems = @("No", "Yes - select folder")
+$xSel   = 0
+$xTop   = [Console]::CursorTop
+[Console]::SetCursorPosition(0, $xTop)
+Write-Host ("  > " + $xItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
+[Console]::SetCursorPosition(0, $xTop + 1)
+Write-Host ("    " + $xItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
+[Console]::SetCursorPosition(0, $xTop + 2)
+while ($true) {
+    $xk = [Console]::ReadKey($true)
+    if ($xk.Key -eq [ConsoleKey]::UpArrow -or $xk.Key -eq [ConsoleKey]::DownArrow) {
+        $p = $xSel; $xSel = 1 - $xSel
+        [Console]::SetCursorPosition(0, $xTop + $p)
+        Write-Host ("    " + $xItems[$p]).PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
+        [Console]::SetCursorPosition(0, $xTop + $xSel)
+        Write-Host ("  > " + $xItems[$xSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
+    } elseif ($xk.Key -eq [ConsoleKey]::Enter) {
+        break
+    }
+}
+Write-Host ""
+if ($xSel -eq 1) {
+    $path2 = Read-FolderPath "Select the extra folder containing raw files" -NoStart
+    if ($path2 -eq "") { Write-Host "  No extra folder selected" -ForegroundColor DarkGray }
+}
+Write-Host ""
+
 if (-not (Test-Path -LiteralPath $path -PathType Container)) {
     Write-Host "  ERROR: Project folder not found: $path" -ForegroundColor Red
     $path = $null
 }
 if ($path -and $path2 -ne "") {
     if (-not (Test-Path -LiteralPath $path2 -PathType Container)) {
-        Write-Host "  WARNING: Chained folder not found, ignoring: $path2" -ForegroundColor Yellow
+        Write-Host "  WARNING: Extra raw files folder not found, ignoring: $path2" -ForegroundColor Yellow
         $path2 = ""
     } elseif ((Resolve-Path -LiteralPath $path2).Path.TrimEnd("\") -eq (Resolve-Path -LiteralPath $path).Path.TrimEnd("\")) {
-        Write-Host "  WARNING: Chained folder is the same as the project folder, ignoring" -ForegroundColor Yellow
+        Write-Host "  WARNING: Extra raw files folder is the same as the project folder, ignoring" -ForegroundColor Yellow
         $path2 = ""
     } else {
-        Write-Host "  Chained folder : $path2" -ForegroundColor DarkCyan
+        Write-Host "  Extra raw files folder : $path2" -ForegroundColor DarkCyan
     }
     Write-Host ""
 }
@@ -120,7 +149,7 @@ if (-not $path) {
                 } elseif ($subfolders.Count -le 1) {
                     $sfChained = $path2
                 } else {
-                    Write-Host "  No '$($sf.Name)' subfolder in chained folder - chained raw files skipped for this sample" -ForegroundColor Yellow
+                    Write-Host "  No '$($sf.Name)' subfolder in extra folder - extra raw files skipped for this sample" -ForegroundColor Yellow
                 }
             }
             if ($sfChained -ne "") { $rArgs += $sfChained.Replace("\", "/") }

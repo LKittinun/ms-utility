@@ -36,8 +36,9 @@ Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoN
 Write-Host ""
 
 $first_path = Get-location
-$path = Read-Host "Insert directory, leave blank for a current location"
-if ($path -eq "") { $path = (Get-Location).Path }
+. (Join-Path $PSScriptRoot "lib\Pickers.ps1")
+$path = Read-FolderPath "Select the folder to scan for .raw files"
+if ($path -eq "") { Clear-Host; .\Main.ps1; return }
 Set-location -Path $path
 
 $currentDate        = Get-Date -Format "yyyyMMdd_HHmmss"

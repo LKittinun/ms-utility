@@ -74,7 +74,7 @@ cat(sprintf("%s\n", sep))
 cat(sprintf(" Project : %s\n", project_dir))
 cat(sprintf(" Results : %s\n", result_dir))
 cat(sprintf(" Output  : %s\n", output_dir))
-if (!is.null(second_dir)) cat(sprintf(" Chained : %s\n", second_dir))
+if (!is.null(second_dir)) cat(sprintf(" Extra   : %s\n", second_dir))
 cat(sprintf("%s\n\n", sep))
 
 # -----------------------------------------------------------------------------
@@ -605,7 +605,7 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
   # -- DIA-NN run parameters ---------------------------------------------------
   kv <- data.frame(
     Parameter = c("Project Folder", "Result Folder",
-                  if (!is.null(second_dir)) "Chained Folder (raw files)" else NULL,
+                  if (!is.null(second_dir)) "Extra Raw Files Folder" else NULL,
                   "Report Generated", "",
                   paste0(rep(" ", nchar("DIA-NN Run Parameters")), collapse = ""),
                   names(log_info)),
@@ -671,7 +671,7 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
   } else {
     n_raw_cols <- 4L
     no_raw_msg <- if (!is.null(second_dir))
-      "No raw files found in project folder or chained folder." else
+      "No raw files found in project folder or extra raw files folder." else
       "No raw files found in project directory."
     writeData(wb, "Raw Files", no_raw_msg, startRow = 1, startCol = 1)
   }
