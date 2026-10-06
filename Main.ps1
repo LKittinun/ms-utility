@@ -5,35 +5,35 @@ $configFile  = Join-Path $PSScriptRoot "config.json"
 $_cfg        = if (Test-Path $configFile) { Get-Content $configFile -Raw | ConvertFrom-Json } else { $null }
 $currentRoot = if ($_cfg -and $_cfg.Root) { $_cfg.Root } else { "Z:\Proteomics" }
 
-# Type "item" = selectable entry; "sep" = non-selectable group label
+# Type "item" = selectable entry; "sep" = non-selectable section header
+# Key = number shortcut, Hint = dim text on the right
 $entries = @(
-    @{ Type = "sep";  Label = "  Project"                                                                             }
-    @{ Type = "item"; Label = "[1]  Project folder initializer";   Script = ".\01_Project_init.ps1";             Color = "White"     }
-    @{ Type = "item"; Label = "[2]  Find project";                 Script = ".\02_Find_project.ps1";             Color = "White"     }
-    @{ Type = "item"; Label = "[3]  Projects overview            (Excel)"; Script = ".\03_Projects_overview.ps1"; Color = "White"   }
-    @{ Type = "sep";  Label = "  Analysis"                                                                            }
-    @{ Type = "item"; Label = "[4]  Column usage report";          Script = ".\04_Column_usage.ps1";             Color = "White"     }
-    @{ Type = "item"; Label = "[5]  DIA-NN metrics                (plots + TSV)"; Script = ".\05_DIANN_metrics.ps1";    Color = "White" }
-    @{ Type = "item"; Label = "[6]  DIA-NN default run            (command line)"; Script = ".\06_DIANN_run.ps1";       Color = "White" }
-    @{ Type = "item"; Label = "[7]  Analysis report               (Excel)";       Script = ".\07_Report_generator.ps1"; Color = "White" }
-    @{ Type = "sep";  Label = "  Miscellaneous"                                                                       }
-    @{ Type = "item"; Label = "[8]  Bulk convert .raw to mzML     (msConvert)"; Script = ".\08_Bulk_msConvert.ps1";    Color = "White" }
-    @{ Type = "item"; Label = "[9]  Contaminant check             (mzsniffer)"; Script = ".\09_Contaminant_check.ps1"; Color = "White" }
-    @{ Type = "item"; Label = "[10] Clear method files            (*sld *meth)"; Script = ".\10_Clear_files.ps1";      Color = "White" }
-    @{ Type = "sep";  Label = "  Admin only"                                                                          }
-    @{ Type = "item"; Label = "[11] Archive raw files             (external HDD)"; Script = ".\11_Archive_raw.ps1";   Color = "DarkGray" }
-    @{ Type = "item"; Label = "[12] Repair project order";         Script = ".\12_Repair_project_order.ps1";     Color = "DarkGray"  }
-    @{ Type = "item"; Label = "[13] Backfill existing column";     Script = ".\13_Backfill_column.ps1";          Color = "DarkGray"  }
-    @{ Type = "item"; Label = "[14] Sync from overview CSV";       Script = ".\14_Sync_from_overview.ps1";       Color = "DarkGray"  }
-    @{ Type = "sep";  Label = "  Settings"                                                                          }
-    @{ Type = "item"; Label = "Set root directory";              Script = "__SET_ROOT__";                Color = "DarkGray"   }
-    @{ Type = "sep";  Label = ""                                                                                      }
-    @{ Type = "item"; Label = "Exit";                              Script = $null;                               Color = "DarkYellow" }
+    @{ Type = "sep";  Label = "PROJECT";       Color = "Cyan" }
+    @{ Type = "item"; Key = "1";  Label = "Project folder initializer"; Hint = "new or update a project";    Script = ".\01_Project_init.ps1";         Color = "White" }
+    @{ Type = "item"; Key = "2";  Label = "Find project";               Hint = "search name, PI, column";    Script = ".\02_Find_project.ps1";         Color = "White" }
+    @{ Type = "item"; Key = "3";  Label = "Projects overview";          Hint = "filter + Excel export";      Script = ".\03_Projects_overview.ps1";    Color = "White" }
+    @{ Type = "sep";  Label = "ANALYSIS";      Color = "Cyan" }
+    @{ Type = "item"; Key = "4";  Label = "Column usage report";        Hint = "runs per column";            Script = ".\04_Column_usage.ps1";         Color = "White" }
+    @{ Type = "item"; Key = "5";  Label = "DIA-NN metrics";             Hint = "plots + TSV";                Script = ".\05_DIANN_metrics.ps1";        Color = "White" }
+    @{ Type = "item"; Key = "6";  Label = "DIA-NN default run";         Hint = "command line";               Script = ".\06_DIANN_run.ps1";            Color = "White" }
+    @{ Type = "item"; Key = "7";  Label = "Analysis report";            Hint = "Excel, per sample folder";   Script = ".\07_Report_generator.ps1";     Color = "White" }
+    @{ Type = "sep";  Label = "MISCELLANEOUS"; Color = "Cyan" }
+    @{ Type = "item"; Key = "8";  Label = "Bulk convert .raw to mzML";  Hint = "msConvert";                  Script = ".\08_Bulk_msConvert.ps1";       Color = "White" }
+    @{ Type = "item"; Key = "9";  Label = "Contaminant check";          Hint = "mzsniffer";                  Script = ".\09_Contaminant_check.ps1";    Color = "White" }
+    @{ Type = "item"; Key = "10"; Label = "Clear method files";         Hint = "*.sld  *.meth";              Script = ".\10_Clear_files.ps1";          Color = "White" }
+    @{ Type = "sep";  Label = "ADMIN ONLY";    Color = "DarkYellow" }
+    @{ Type = "item"; Key = "11"; Label = "Archive raw files";          Hint = "to external HDD";            Script = ".\11_Archive_raw.ps1";          Color = "Gray" }
+    @{ Type = "item"; Key = "12"; Label = "Repair project order";       Hint = "password";                   Script = ".\12_Repair_project_order.ps1"; Color = "Gray" }
+    @{ Type = "item"; Key = "13"; Label = "Backfill existing column";   Hint = "password";                   Script = ".\13_Backfill_column.ps1";      Color = "Gray" }
+    @{ Type = "item"; Key = "14"; Label = "Sync from overview CSV";     Hint = "password";                   Script = ".\14_Sync_from_overview.ps1";   Color = "Gray" }
+    @{ Type = "sep";  Label = "SETTINGS";      Color = "DarkGray" }
+    @{ Type = "item"; Key = "";   Label = "Set root directory";         Hint = "";                           Script = "__SET_ROOT__";                  Color = "Gray" }
+    @{ Type = "item"; Key = "";   Label = "Exit";                       Hint = "Esc";                        Script = $null;                           Color = "DarkYellow" }
 )
 
-$w      = 55
-$border = "=" * $w
-$rule   = "-" * $w
+$W      = 66     # total row width
+$labelW = 30
+$hintW  = $W - 2 - 2 - 2 - 2 - $labelW   # "  " + marker(2) + num(2) + "  " + label
 
 # Indices of selectable items only
 $selectable = @(0..($entries.Count - 1) | Where-Object { $entries[$_].Type -eq "item" })
@@ -43,40 +43,71 @@ function DrawEntry ($i) {
     $e = $entries[$i]
     [Console]::SetCursorPosition(0, $menuTop + $i)
     if ($e.Type -eq "sep") {
-        $label = if ($e.Label -ne "") { "  $($e.Label) " + ("-" * [Math]::Max(0, $w - $e.Label.Length - 1)) } else { "" }
-        Write-Host $label.PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
+        $head = "  " + $e.Label + " "
+        Write-Host $head -ForegroundColor $e.Color -NoNewline
+        Write-Host ("-" * ($W - $head.Length)) -ForegroundColor DarkGray -NoNewline
+        return
+    }
+    $num  = $e.Key.PadLeft(2)
+    $lbl  = $e.Label.PadRight($labelW)
+    $hint = $e.Hint
+    if ($e.Script -eq "__SET_ROOT__") { $hint = $currentRoot }
+    if ($hint.Length -gt $hintW) { $hint = "..." + $hint.Substring($hint.Length - $hintW + 3) }
+    $hint = $hint.PadRight($hintW)
+
+    Write-Host "  " -NoNewline
+    if ($selectable[$selIdx] -eq $i) {
+        Write-Host ("> " + $num + "  " + $lbl + $hint) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
     } else {
-        $highlight = ($selectable[$selIdx] -eq $i)
-        $text = ("    $($e.Label)").PadRight($w + 4)
-        if ($highlight) {
-            Write-Host $text -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } else {
-            Write-Host $text -ForegroundColor $e.Color -NoNewline
-        }
+        $numColor = if ($e.Color -eq "White") { "Cyan" } else { "DarkGray" }
+        Write-Host "  " -NoNewline
+        Write-Host $num -ForegroundColor $numColor -NoNewline
+        Write-Host ("  " + $lbl) -ForegroundColor $e.Color -NoNewline
+        Write-Host $hint -ForegroundColor DarkGray -NoNewline
     }
 }
 
+# -- Header -------------------------------------------------------------------
 Clear-Host
 Write-Host ""
-Write-Host "  $border" -ForegroundColor DarkCyan
-Write-Host "          Mass Spectrometry Utility Suite" -ForegroundColor Cyan
-Write-Host "  $border" -ForegroundColor DarkCyan
+$banner = @(
+    '   __  __ ____    _   _ _   _ _ _ _         '
+    '  |  \/  / ___|  | | | | |_(_) (_) |_ _   _ '
+    '  | |\/| \___ \  | | | | __| | | | __| | | |'
+    '  | |  | |___) | | |_| | |_| | | | |_| |_| |'
+    '  |_|  |_|____/   \___/ \__|_|_|_|\__|\__, |'
+    '                                      |___/ '
+)
+foreach ($line in $banner) { Write-Host $line -ForegroundColor Cyan }
+Write-Host "  Mass Spectrometry Utility Suite" -ForegroundColor DarkCyan -NoNewline
+Write-Host ("   " + (Get-Date -Format "ddd dd MMM yyyy")) -ForegroundColor DarkGray
 Write-Host ""
 
+# -- Menu ---------------------------------------------------------------------
 $menuTop = [Console]::CursorTop
-
 for ($i = 0; $i -lt $entries.Count; $i++) {
     DrawEntry $i
     [Console]::SetCursorPosition(0, $menuTop + $i + 1)
 }
 
+# -- Footer -------------------------------------------------------------------
 [Console]::SetCursorPosition(0, $menuTop + $entries.Count + 1)
-Write-Host "  $rule" -ForegroundColor DarkCyan
-Write-Host "  Dir  : $((Get-Location).Path)" -ForegroundColor DarkYellow
-Write-Host "  Root : $currentRoot" -ForegroundColor DarkGray
-Write-Host "  Up / Down + Enter  |  Esc to exit" -ForegroundColor DarkCyan
+Write-Host ("  " + ("-" * ($W - 2))) -ForegroundColor DarkGray
+$rootOk = Test-Path -LiteralPath $currentRoot
+Write-Host "  Root  " -ForegroundColor DarkGray -NoNewline
+Write-Host $currentRoot -ForegroundColor White -NoNewline
+if ($rootOk) { Write-Host "   [online]" -ForegroundColor Green }
+else         { Write-Host "   [not found - check drive / Settings]" -ForegroundColor Red }
+Write-Host "  Up/Down" -ForegroundColor Cyan -NoNewline;  Write-Host " move   " -ForegroundColor DarkGray -NoNewline
+Write-Host "1-14" -ForegroundColor Cyan -NoNewline;       Write-Host " jump   " -ForegroundColor DarkGray -NoNewline
+Write-Host "Enter" -ForegroundColor Cyan -NoNewline;      Write-Host " run   " -ForegroundColor DarkGray -NoNewline
+Write-Host "Esc" -ForegroundColor Cyan -NoNewline;        Write-Host " exit" -ForegroundColor DarkGray
 Write-Host ""
+$msgRow = [Console]::CursorTop
 
+# -- Input loop ---------------------------------------------------------------
+$numBuf  = ""
+$numTime = [DateTime]::MinValue
 while ($true) {
     $key     = [Console]::ReadKey($true)
     $prevIdx = $selIdx
@@ -87,15 +118,31 @@ while ($true) {
     elseif ($key.Key -eq [ConsoleKey]::DownArrow) {
         $selIdx = ($selIdx + 1) % $selectable.Count
     }
+    elseif ($key.Key -eq [ConsoleKey]::Home) { $selIdx = 0 }
+    elseif ($key.Key -eq [ConsoleKey]::End)  { $selIdx = $selectable.Count - 1 }
+    elseif ($key.KeyChar -match '^[0-9]$') {
+        # Number shortcut: digits typed within 1 second combine ("1","2" -> 12)
+        $now = Get-Date
+        if (($now - $numTime).TotalMilliseconds -gt 1000) { $numBuf = "" }
+        $numTime = $now
+        $try = $numBuf + $key.KeyChar
+        $hit = @(0..($selectable.Count - 1) | Where-Object { $entries[$selectable[$_]].Key -eq $try })
+        if ($hit.Count -eq 0) {
+            $try = "$($key.KeyChar)"
+            $hit = @(0..($selectable.Count - 1) | Where-Object { $entries[$selectable[$_]].Key -eq $try })
+        }
+        $numBuf = $try
+        if ($hit.Count -gt 0) { $selIdx = $hit[0] }
+    }
     elseif ($key.Key -eq [ConsoleKey]::Enter) {
         $chosen = $entries[$selectable[$selIdx]]
         if ($null -eq $chosen.Script) {
-            [Console]::SetCursorPosition(0, $menuTop + $entries.Count + 6)
+            [Console]::SetCursorPosition(0, $msgRow)
             Write-Host "  Exiting..." -ForegroundColor DarkYellow
             return
         }
         if ($chosen.Script -eq "__SET_ROOT__") {
-            [Console]::SetCursorPosition(0, $menuTop + $entries.Count + 6)
+            [Console]::SetCursorPosition(0, $msgRow)
             . (Join-Path $PSScriptRoot "lib\Pickers.ps1")
             $newRoot = Read-FolderPath "Select the new root directory (Cancel = keep current)" $currentRoot
             if ($newRoot -ne "") { $currentRoot = $newRoot }
@@ -107,7 +154,7 @@ while ($true) {
         return
     }
     elseif ($key.Key -eq [ConsoleKey]::Escape) {
-        [Console]::SetCursorPosition(0, $menuTop + $entries.Count + 5)
+        [Console]::SetCursorPosition(0, $msgRow)
         Write-Host "  Exiting..." -ForegroundColor DarkYellow
         return
     }
