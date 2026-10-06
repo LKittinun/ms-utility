@@ -112,22 +112,35 @@ collect_raw_files <- function(project_dir, second_dir = NULL) {
     sort(files)
   }
 
-  second_search <- NULL
-  if (!is.null(second_dir) && dir.exists(second_dir)) {
-    sub_match <- file.path(second_dir, basename(project_dir))
-    second_search <- if (dir.exists(sub_match)) sub_match else second_dir
-  }
+  # second_dir is already resolved by the caller (07_Report_generator.ps1) to
+  # the exact folder to search; it is used as-is
+  two_sources <- !is.null(second_dir) && dir.exists(second_dir) &&
+    normalizePath(second_dir, winslash = "/") != normalizePath(project_dir, winslash = "/")
 
-  two_sources <- !is.null(second_search)
+  # Label each source by folder name; use the full path when the name is empty
+  # (drive root) or both sources share the same name
+  lbl1 <- basename(project_dir)
+  lbl2 <- if (two_sources) basename(second_dir) else ""
+  if (two_sources && (lbl2 == "" || tolower(lbl2) == tolower(lbl1))) lbl2 <- second_dir
+  if (lbl1 == "") lbl1 <- project_dir
+
   dirs <- if (two_sources) {
-    list(list(path = project_dir, label = basename(project_dir)),
-         list(path = second_search, label = basename(second_dir)))
+    list(list(path = project_dir, label = lbl1),
+         list(path = second_dir,  label = lbl2))
   } else {
     list(list(path = project_dir, label = NULL))
   }
 
+  seen <- character(0)
   all_rows <- lapply(dirs, function(d) {
     files <- find_raw(d$path)
+    # Skip files already found in an earlier source (e.g. partially archived copy)
+    dup   <- tolower(basename(files)) %in% seen
+    if (any(dup))
+      cat(sprintf("  [INFO] %d raw file(s) in %s already listed from project folder - skipped\n",
+                  sum(dup), d$path))
+    files <- files[!dup]
+    seen <<- c(seen, tolower(basename(files)))
     if (length(files) == 0) return(NULL)
     rows <- lapply(files, function(f) {
       st  <- file.info(f)
@@ -293,8 +306,8 @@ run_quality_summary <- function(stats_df) {
     Mean      = round(colMeans(sub, na.rm = TRUE), 4),
     Median    = round(apply(sub, 2, median, na.rm = TRUE), 4),
     `Std Dev` = round(apply(sub, 2, sd,     na.rm = TRUE), 4),
-    Min       = round(suppressWarnings(apply(sub, 2, min, na.rm = TRUE)), 4),
-    Max       = round(suppressWarnings(apply(sub, 2, max, na.rm = TRUE)), 4),
+    Min       = round(apply(sub, 2, function(x) if (all(is.na(x))) NA_real_ else min(x, na.rm = TRUE)), 4),
+    Max       = round(apply(sub, 2, function(x) if (all(is.na(x))) NA_real_ else max(x, na.rm = TRUE)), 4),
     `CV (%)`  = round(
       apply(sub, 2, sd, na.rm = TRUE) / colMeans(sub, na.rm = TRUE) * 100, 2),
     check.names = FALSE, row.names = NULL
@@ -610,7 +623,7 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
            createStyle(textDecoration = "bold", fontColour = CLR_DARK_BLUE),
            rows = r:(r + nrow(kv) - 1), cols = 1,
            gridExpand = TRUE, stack = TRUE)
-  divider_row <- r + (if (!is.null(second_dir)) 5L else 4L)
+  divider_row <- r - 1L + which(kv$Value == " - DIA-NN Run Parameters  -")[1]
   addStyle(wb, "Project Overview",
            createStyle(fgFill = CLR_SECTION, textDecoration = "bold",
                        fontColour = CLR_MID_BLUE),
@@ -657,10 +670,12 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
     setRowHeights(wb, "Raw Files", rows = raw_note_row, heights = 28)
   } else {
     n_raw_cols <- 4L
-    writeData(wb, "Raw Files", "No raw files found in project directory.",
-              startRow = 1, startCol = 1)
+    no_raw_msg <- if (!is.null(second_dir))
+      "No raw files found in project folder or chained folder." else
+      "No raw files found in project directory."
+    writeData(wb, "Raw Files", no_raw_msg, startRow = 1, startCol = 1)
   }
-  raw_col_widths <- if (n_raw_cols == 5L) c(30, 25, 12, 10, 18) else c(30, 12, 10, 18)
+  raw_col_widths <- if ("Source Folder" %in% names(raw_df)) c(30, 25, 12, 10, 18) else c(30, 12, 10, 18)
   setColWidths(wb, "Raw Files", cols = seq_len(n_raw_cols), widths = raw_col_widths)
 
   # -- Sheet: Run Statistics ---------------------------------------------------
@@ -735,7 +750,12 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
         if (grepl("[/\\\\]", n)) tools::file_path_sans_ext(basename(n)) else n
       }
       qc_short      <- sapply(qc_cols, shorten_name, USE.NAMES = FALSE)
-      qc_groups     <- sub("[_-]?\\d+$", "", qc_short)
+      # Strip a separated replicate number (QC100_1 -> QC100); otherwise strip
+      # only a short 1-2 digit suffix (QC1 -> QC) so QC100 / QC200 stay distinct
+      qc_groups     <- ifelse(grepl("[_-]\\d+$", qc_short),
+                              sub("[_-]\\d+$", "", qc_short),
+                              sub("(?<!\\d)\\d{1,2}$", "", qc_short, perl = TRUE))
+      qc_groups     <- ifelse(qc_groups == "", qc_short, qc_groups)
       unique_groups <- unique(qc_groups)
       n_groups      <- length(unique_groups)
       grp_palette   <- c("#2E75B6", "#C00000", "#70AD47", "#ED7D31", "#7030A0")
@@ -873,7 +893,10 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
         # Right: overlaid CV% histograms (density scale) + median lines
         all_cv <- unlist(lapply(group_data, function(g) g$cv[is.finite(g$cv)]))
         cv_xlim <- if (length(all_cv) > 0) range(all_cv) else c(0, 100)
-        first_grp <- unique_groups[1]
+        # Base histogram on the first group that has finite CVs
+        cv_grps   <- unique_groups[sapply(unique_groups, function(g)
+                       any(is.finite(group_data[[g]]$cv)))]
+        first_grp <- if (length(cv_grps) > 0) cv_grps[1] else unique_groups[1]
         cv_vals   <- group_data[[first_grp]]$cv
         cv_vals   <- cv_vals[is.finite(cv_vals)]
         if (length(cv_vals) == 0) {
@@ -889,8 +912,7 @@ build_report <- function(project_dir, result_dir, out_path, second_dir = NULL) {
              main = "Per-Protein CV% Distribution",
              xlab = "CV% across QC samples", ylab = "Density")
         if (n_groups > 1) {
-          for (gi in seq(2L, n_groups)) {
-            grp     <- unique_groups[gi]
+          for (grp in setdiff(unique_groups, first_grp)) {
             cv_vals <- group_data[[grp]]$cv
             cv_vals <- cv_vals[is.finite(cv_vals)]
             if (length(cv_vals) == 0) next

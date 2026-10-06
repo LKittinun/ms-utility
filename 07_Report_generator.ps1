@@ -41,18 +41,36 @@ $first_path = Get-Location
 $raw = Read-Host "Insert project directory, leave blank for current location (use ; to chain two folders)"
 if ($raw -eq "") { $raw = $first_path.Path }
 $parts = @($raw -split ";" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
+if ($parts.Count -eq 0) { $parts = @($first_path.Path) }
 $path  = $parts[0]
 $path2 = if ($parts.Count -ge 2) { $parts[1] } else { "" }
-if ($path2 -ne "") {
-    Write-Host "  Chained folder : $path2" -ForegroundColor DarkCyan
+if (-not (Test-Path -LiteralPath $path -PathType Container)) {
+    Write-Host "  ERROR: Project folder not found: $path" -ForegroundColor Red
+    $path = $null
+}
+if ($path -and $path2 -ne "") {
+    if (-not (Test-Path -LiteralPath $path2 -PathType Container)) {
+        Write-Host "  WARNING: Chained folder not found, ignoring: $path2" -ForegroundColor Yellow
+        $path2 = ""
+    } elseif ((Resolve-Path -LiteralPath $path2).Path.TrimEnd("\") -eq (Resolve-Path -LiteralPath $path).Path.TrimEnd("\")) {
+        Write-Host "  WARNING: Chained folder is the same as the project folder, ignoring" -ForegroundColor Yellow
+        $path2 = ""
+    } else {
+        Write-Host "  Chained folder : $path2" -ForegroundColor DarkCyan
+    }
     Write-Host ""
 }
 
 # Detect subfolders that contain a Result\ subfolder (sample type folders)
-$subfolders = Get-ChildItem -Path $path -Directory |
-    Where-Object { Test-Path (Join-Path $_.FullName "Result") }
+$subfolders = @()
+if ($path) {
+    $subfolders = @(Get-ChildItem -LiteralPath $path -Directory |
+        Where-Object { Test-Path (Join-Path $_.FullName "Result") })
+}
 
-if ($subfolders.Count -eq 0) {
+if (-not $path) {
+    # Invalid project folder - skip processing, fall through to navigation
+} elseif ($subfolders.Count -eq 0) {
     # No subfolders with Result\ found - treat $path itself as the project folder
     $subfolders = @([PSCustomObject]@{ FullName = $path; Name = Split-Path $path -Leaf })
     Write-Host "  No subfolders with Result\ found - running on: $path" -ForegroundColor Yellow
@@ -76,7 +94,9 @@ if (-not $rscript) {
     }
 }
 
-if (-not $rscript) {
+if (-not $path) {
+    # Nothing to process
+} elseif (-not $rscript) {
     Write-Host "ERROR: Rscript.exe not found. Install R from https://cran.r-project.org/" -ForegroundColor Red
 } else {
     Write-Host "Using R: $rscript" -ForegroundColor Cyan
@@ -88,7 +108,22 @@ if (-not $rscript) {
         Write-Host "  $rule" -ForegroundColor DarkCyan
         try {
             $rArgs = @(".\R\generate_report.R", $sfPath, "Result", $sfPath)
-            if ($path2 -ne "") { $rArgs += $path2.Replace("\", "/") }
+            # Resolve the chained raw-file folder for this sample folder:
+            # prefer a same-named subfolder; fall back to the chained root only
+            # when there is a single sample folder (otherwise every sample would
+            # pick up the root's files)
+            $sfChained = ""
+            if ($path2 -ne "") {
+                $sub = Join-Path $path2 $sf.Name
+                if (Test-Path -LiteralPath $sub -PathType Container) {
+                    $sfChained = $sub
+                } elseif ($subfolders.Count -le 1) {
+                    $sfChained = $path2
+                } else {
+                    Write-Host "  No '$($sf.Name)' subfolder in chained folder - chained raw files skipped for this sample" -ForegroundColor Yellow
+                }
+            }
+            if ($sfChained -ne "") { $rArgs += $sfChained.Replace("\", "/") }
             & $rscript @rArgs 2>&1 | ForEach-Object { "$_" }
         } catch {
             Write-Host "  Unexpected error during R execution: $_" -ForegroundColor Red
