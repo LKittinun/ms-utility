@@ -1,6 +1,7 @@
 $w          = 55
 $border     = "=" * $w
 $rule       = "-" * $w
+. (Join-Path $PSScriptRoot "lib\Menu.ps1")
 $_cfg       = if (Test-Path (Join-Path $PSScriptRoot "config.json")) { Get-Content (Join-Path $PSScriptRoot "config.json") -Raw | ConvertFrom-Json } else { $null }
 $_rootBase  = if ($_cfg -and $_cfg.Root) { $_cfg.Root } else { "Z:\Proteomics" }
 $root       = Join-Path $_rootBase "Projects"
@@ -20,7 +21,7 @@ Show-Header
 
 while ($true) {
     $raw = (Read-Host "  Search (blank = main menu)").Trim()
-    if ($raw -eq "") { Clear-Host; .\Main.ps1; return }
+    if ($raw -eq "") { Return-ToMain; return }
 
     $terms = @($raw -split '[,;]' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
 
@@ -97,94 +98,32 @@ while ($true) {
     $nItems += "Back to main menu"
     $nItems += "Exit"
 
-    $nSel = 0
-    $nTop = [Console]::CursorTop
-
-    for ($i = 0; $i -lt $nItems.Count; $i++) {
-        [Console]::SetCursorPosition(0, $nTop + $i)
-        $fg = if ($nItems[$i] -eq "Exit") { "DarkYellow" } else { "DarkCyan" }
-        Write-Host ("    " + $nItems[$i]).PadRight($w + 4) -ForegroundColor $fg -NoNewline
-    }
-    [Console]::SetCursorPosition(0, $nTop)
-    Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + $nItems.Count)
-
     $action = $null
     while ($null -eq $action) {
-        $k = [Console]::ReadKey($true)
-        if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-            $p    = $nSel
-            $nSel = if ($k.Key -eq [ConsoleKey]::UpArrow) {
-                        ($nSel - 1 + $nItems.Count) % $nItems.Count
-                    } else {
-                        ($nSel + 1) % $nItems.Count
-                    }
-            [Console]::SetCursorPosition(0, $nTop + $p)
-            $fg = if ($nItems[$p] -eq "Exit") { "DarkYellow" } else { "DarkCyan" }
-            Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $fg -NoNewline
-            [Console]::SetCursorPosition(0, $nTop + $nSel)
-            Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-            [Console]::SetCursorPosition(0, $nTop + $nItems.Count)
-        } elseif ($k.Key -eq [ConsoleKey]::Enter) {
-            if ($nItems[$nSel] -eq "Open in Explorer") {
-                if ($results.Count -eq 1) {
-                    explorer.exe $results[0].Path
-                } else {
-                    # Secondary arrow-key picker
-                    $pItems = @($results | ForEach-Object {
-                        ("$($_.ProjectID)  $($_.Project)").PadRight(40).Substring(0, 40)
-                    })
-                    $pSel = 0
-                    Write-Host ""
-                    Write-Host "  Open which project?" -ForegroundColor DarkCyan
-                    $pTop = [Console]::CursorTop
-
-                    for ($i = 0; $i -lt $pItems.Count; $i++) {
-                        [Console]::SetCursorPosition(0, $pTop + $i)
-                        Write-Host ("    " + $pItems[$i]).PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
-                    }
-                    [Console]::SetCursorPosition(0, $pTop)
-                    Write-Host ("  > " + $pItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-                    [Console]::SetCursorPosition(0, $pTop + $pItems.Count)
-
-                    $picked = $null
-                    while ($null -eq $picked) {
-                        $pk = [Console]::ReadKey($true)
-                        if ($pk.Key -eq [ConsoleKey]::UpArrow -or $pk.Key -eq [ConsoleKey]::DownArrow) {
-                            $pp   = $pSel
-                            $pSel = if ($pk.Key -eq [ConsoleKey]::UpArrow) {
-                                        ($pSel - 1 + $pItems.Count) % $pItems.Count
-                                    } else {
-                                        ($pSel + 1) % $pItems.Count
-                                    }
-                            [Console]::SetCursorPosition(0, $pTop + $pp)
-                            Write-Host ("    " + $pItems[$pp]).PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
-                            [Console]::SetCursorPosition(0, $pTop + $pSel)
-                            Write-Host ("  > " + $pItems[$pSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-                            [Console]::SetCursorPosition(0, $pTop + $pItems.Count)
-                        } elseif ($pk.Key -eq [ConsoleKey]::Enter) {
-                            $picked = $results[$pSel].Path
-                        } elseif ($pk.Key -eq [ConsoleKey]::Escape) {
-                            $picked = ""
-                        }
-                    }
-                    if ($picked -ne "") { explorer.exe $picked }
-                }
-                # stay in nav loop to allow another action
-            } else {
-                $action = $nItems[$nSel]
-            }
-        } elseif ($k.Key -eq [ConsoleKey]::Escape) {
+        $nr = Show-Menu -Items $nItems -AllowEscape
+        if ($nr.Action -ne "select") {
             $action = "Exit"
+        } elseif ($nItems[$nr.Index] -eq "Open in Explorer") {
+            if ($results.Count -eq 1) {
+                explorer.exe $results[0].Path
+            } else {
+                # Secondary picker
+                $pItems = @($results | ForEach-Object {
+                    ("$($_.ProjectID)  $($_.Project)").PadRight(40).Substring(0, 40)
+                })
+                Write-Host ""
+                Write-Host "  Open which project?" -ForegroundColor DarkCyan
+                $pr = Show-Menu -Items $pItems -AllowEscape
+                if ($pr.Action -eq "select") { explorer.exe $results[$pr.Index].Path }
+            }
+            # stay in nav loop to allow another action
+        } else {
+            $action = $nItems[$nr.Index]
         }
     }
 
-    if ($action -eq "Back to main menu") { Clear-Host; .\Main.ps1; return }
-    if ($action -eq "Exit") {
-        [Console]::SetCursorPosition(0, $nTop + $nItems.Count + 1)
-        Write-Host "  Exiting..." -ForegroundColor DarkYellow
-        return
-    }
+    if ($action -eq "Back to main menu") { Return-ToMain; return }
+    if ($action -eq "Exit") { Request-Exit; return }
     # "New search"
     Show-Header
 }

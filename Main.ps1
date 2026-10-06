@@ -26,6 +26,7 @@ $entries = @(
     @{ Type = "item"; Key = "12"; Label = "Repair project order";       Hint = "password";                   Script = ".\12_Repair_project_order.ps1"; Color = "Gray" }
     @{ Type = "item"; Key = "13"; Label = "Backfill existing column";   Hint = "password";                   Script = ".\13_Backfill_column.ps1";      Color = "Gray" }
     @{ Type = "item"; Key = "14"; Label = "Sync from overview CSV";     Hint = "password";                   Script = ".\14_Sync_from_overview.ps1";   Color = "Gray" }
+    @{ Type = "item"; Key = "15"; Label = "Data health check";          Hint = "find data problems";         Script = ".\15_Data_health_check.ps1";    Color = "Gray" }
     @{ Type = "sep";  Label = "SETTINGS";      Color = "DarkGray" }
     @{ Type = "item"; Key = "";   Label = "Set root directory";         Hint = "";                           Script = "__SET_ROOT__";                  Color = "Gray" }
     @{ Type = "item"; Key = "";   Label = "Exit";                       Hint = "Esc";                        Script = $null;                           Color = "DarkYellow" }
@@ -67,9 +68,6 @@ function DrawEntry ($i) {
     }
 }
 
-# -- Header -------------------------------------------------------------------
-Clear-Host
-Write-Host ""
 $banner = @(
     '   __  __ ____    _   _ _   _ _ _ _         '
     '  |  \/  / ___|  | | | | |_(_) (_) |_ _   _ '
@@ -78,89 +76,116 @@ $banner = @(
     '  |_|  |_|____/   \___/ \__|_|_|_|\__|\__, |'
     '                                      |___/ '
 )
-foreach ($line in $banner) { Write-Host $line -ForegroundColor Cyan }
-Write-Host "  Mass Spectrometry Utility Suite" -ForegroundColor DarkCyan -NoNewline
-Write-Host ("   " + (Get-Date -Format "ddd dd MMM yyyy")) -ForegroundColor DarkGray
-Write-Host ""
+$maxKey = ($entries | Where-Object { $_.Key } | ForEach-Object { [int]$_.Key } | Measure-Object -Maximum).Maximum
 
-# -- Menu ---------------------------------------------------------------------
-$menuTop = [Console]::CursorTop
-for ($i = 0; $i -lt $entries.Count; $i++) {
-    DrawEntry $i
-    [Console]::SetCursorPosition(0, $menuTop + $i + 1)
-}
+# Scripts return here instead of re-launching Main (avoids an ever-growing call stack)
+$global:MsInMain = $true
+$global:MsExit   = $false
+try {
+:menuLoop while ($true) {
+    Set-Location $PSScriptRoot
 
-# -- Footer -------------------------------------------------------------------
-[Console]::SetCursorPosition(0, $menuTop + $entries.Count + 1)
-Write-Host ("  " + ("-" * ($W - 2))) -ForegroundColor DarkGray
-$rootOk = Test-Path -LiteralPath $currentRoot
-Write-Host "  Root  " -ForegroundColor DarkGray -NoNewline
-Write-Host $currentRoot -ForegroundColor White -NoNewline
-if ($rootOk) { Write-Host "   [online]" -ForegroundColor Green }
-else         { Write-Host "   [not found - check drive / Settings]" -ForegroundColor Red }
-Write-Host "  Up/Down" -ForegroundColor Cyan -NoNewline;  Write-Host " move   " -ForegroundColor DarkGray -NoNewline
-Write-Host "1-14" -ForegroundColor Cyan -NoNewline;       Write-Host " jump   " -ForegroundColor DarkGray -NoNewline
-Write-Host "Enter" -ForegroundColor Cyan -NoNewline;      Write-Host " run   " -ForegroundColor DarkGray -NoNewline
-Write-Host "Esc" -ForegroundColor Cyan -NoNewline;        Write-Host " exit" -ForegroundColor DarkGray
-Write-Host ""
-$msgRow = [Console]::CursorTop
+    # -- Header ---------------------------------------------------------------
+    Clear-Host
+    Write-Host ""
+    foreach ($line in $banner) { Write-Host $line -ForegroundColor Cyan }
+    Write-Host "  Mass Spectrometry Utility Suite" -ForegroundColor DarkCyan -NoNewline
+    Write-Host ("   " + (Get-Date -Format "ddd dd MMM yyyy")) -ForegroundColor DarkGray
+    Write-Host ""
 
-# -- Input loop ---------------------------------------------------------------
-$numBuf  = ""
-$numTime = [DateTime]::MinValue
-while ($true) {
-    $key     = [Console]::ReadKey($true)
-    $prevIdx = $selIdx
-
-    if ($key.Key -eq [ConsoleKey]::UpArrow) {
-        $selIdx = ($selIdx - 1 + $selectable.Count) % $selectable.Count
+    # -- Menu -----------------------------------------------------------------
+    $menuTop = [Console]::CursorTop
+    for ($i = 0; $i -lt $entries.Count; $i++) {
+        DrawEntry $i
+        [Console]::SetCursorPosition(0, $menuTop + $i + 1)
     }
-    elseif ($key.Key -eq [ConsoleKey]::DownArrow) {
-        $selIdx = ($selIdx + 1) % $selectable.Count
-    }
-    elseif ($key.Key -eq [ConsoleKey]::Home) { $selIdx = 0 }
-    elseif ($key.Key -eq [ConsoleKey]::End)  { $selIdx = $selectable.Count - 1 }
-    elseif ($key.KeyChar -match '^[0-9]$') {
-        # Number shortcut: digits typed within 1 second combine ("1","2" -> 12)
-        $now = Get-Date
-        if (($now - $numTime).TotalMilliseconds -gt 1000) { $numBuf = "" }
-        $numTime = $now
-        $try = $numBuf + $key.KeyChar
-        $hit = @(0..($selectable.Count - 1) | Where-Object { $entries[$selectable[$_]].Key -eq $try })
-        if ($hit.Count -eq 0) {
-            $try = "$($key.KeyChar)"
-            $hit = @(0..($selectable.Count - 1) | Where-Object { $entries[$selectable[$_]].Key -eq $try })
+
+    # -- Footer ---------------------------------------------------------------
+    [Console]::SetCursorPosition(0, $menuTop + $entries.Count + 1)
+    Write-Host ("  " + ("-" * ($W - 2))) -ForegroundColor DarkGray
+    $rootOk = Test-Path -LiteralPath $currentRoot
+    Write-Host "  Root  " -ForegroundColor DarkGray -NoNewline
+    Write-Host $currentRoot -ForegroundColor White -NoNewline
+    if ($rootOk) { Write-Host "   [online]" -ForegroundColor Green }
+    else         { Write-Host "   [not found - check drive / Settings]" -ForegroundColor Red }
+    Write-Host "  Up/Down" -ForegroundColor Cyan -NoNewline;  Write-Host " move   " -ForegroundColor DarkGray -NoNewline
+    Write-Host "1-$maxKey" -ForegroundColor Cyan -NoNewline;  Write-Host " jump   " -ForegroundColor DarkGray -NoNewline
+    Write-Host "Enter" -ForegroundColor Cyan -NoNewline;      Write-Host " run   " -ForegroundColor DarkGray -NoNewline
+    Write-Host "Esc" -ForegroundColor Cyan -NoNewline;        Write-Host " exit" -ForegroundColor DarkGray
+    Write-Host ""
+    $msgRow = [Console]::CursorTop
+
+    # -- Input loop -----------------------------------------------------------
+    $numBuf  = ""
+    $numTime = [DateTime]::MinValue
+    while ($true) {
+        $key     = [Console]::ReadKey($true)
+        $prevIdx = $selIdx
+
+        if ($key.Key -eq [ConsoleKey]::UpArrow) {
+            $selIdx = ($selIdx - 1 + $selectable.Count) % $selectable.Count
         }
-        $numBuf = $try
-        if ($hit.Count -gt 0) { $selIdx = $hit[0] }
-    }
-    elseif ($key.Key -eq [ConsoleKey]::Enter) {
-        $chosen = $entries[$selectable[$selIdx]]
-        if ($null -eq $chosen.Script) {
+        elseif ($key.Key -eq [ConsoleKey]::DownArrow) {
+            $selIdx = ($selIdx + 1) % $selectable.Count
+        }
+        elseif ($key.Key -eq [ConsoleKey]::Home) { $selIdx = 0 }
+        elseif ($key.Key -eq [ConsoleKey]::End)  { $selIdx = $selectable.Count - 1 }
+        elseif ($key.KeyChar -match '^[0-9]$') {
+            # Number shortcut: digits typed within 1 second combine ("1","2" -> 12)
+            $now = Get-Date
+            if (($now - $numTime).TotalMilliseconds -gt 1000) { $numBuf = "" }
+            $numTime = $now
+            $try = $numBuf + $key.KeyChar
+            $hit = @(0..($selectable.Count - 1) | Where-Object { $entries[$selectable[$_]].Key -eq $try })
+            if ($hit.Count -eq 0) {
+                $try = "$($key.KeyChar)"
+                $hit = @(0..($selectable.Count - 1) | Where-Object { $entries[$selectable[$_]].Key -eq $try })
+            }
+            $numBuf = $try
+            if ($hit.Count -gt 0) { $selIdx = $hit[0] }
+        }
+        elseif ($key.Key -eq [ConsoleKey]::Enter) {
+            $chosen = $entries[$selectable[$selIdx]]
+            if ($null -eq $chosen.Script) {
+                [Console]::SetCursorPosition(0, $msgRow)
+                Write-Host "  Exiting..." -ForegroundColor DarkYellow
+                break menuLoop
+            }
+            if ($chosen.Script -eq "__SET_ROOT__") {
+                [Console]::SetCursorPosition(0, $msgRow)
+                . (Join-Path $PSScriptRoot "lib\Pickers.ps1")
+                $newRoot = Read-FolderPath "Select the new root directory (Cancel = keep current)" $currentRoot
+                if ($newRoot -ne "") {
+                    $currentRoot = $newRoot
+                    [pscustomobject]@{ Root = $currentRoot } | ConvertTo-Json | Out-File $configFile -Encoding UTF8
+                }
+                continue menuLoop
+            }
+            Clear-Host
+            try {
+                & $chosen.Script
+            } catch {
+                Write-Host ""
+                Write-Host "  ERROR: $_" -ForegroundColor Red
+                Write-Host "  Press any key to return to the menu..." -ForegroundColor DarkGray
+                [void][Console]::ReadKey($true)
+            }
+            if ($global:MsExit) { break menuLoop }
+            continue menuLoop
+        }
+        elseif ($key.Key -eq [ConsoleKey]::Escape) {
             [Console]::SetCursorPosition(0, $msgRow)
             Write-Host "  Exiting..." -ForegroundColor DarkYellow
-            return
+            break menuLoop
         }
-        if ($chosen.Script -eq "__SET_ROOT__") {
-            [Console]::SetCursorPosition(0, $msgRow)
-            . (Join-Path $PSScriptRoot "lib\Pickers.ps1")
-            $newRoot = Read-FolderPath "Select the new root directory (Cancel = keep current)" $currentRoot
-            if ($newRoot -ne "") { $currentRoot = $newRoot }
-            [pscustomobject]@{ Root = $currentRoot } | ConvertTo-Json | Out-File $configFile -Encoding UTF8
-            Clear-Host; .\Main.ps1; return
-        }
-        Clear-Host
-        & $chosen.Script
-        return
-    }
-    elseif ($key.Key -eq [ConsoleKey]::Escape) {
-        [Console]::SetCursorPosition(0, $msgRow)
-        Write-Host "  Exiting..." -ForegroundColor DarkYellow
-        return
-    }
 
-    if ($prevIdx -ne $selIdx) {
-        DrawEntry $selectable[$prevIdx]
-        DrawEntry $selectable[$selIdx]
+        if ($prevIdx -ne $selIdx) {
+            DrawEntry $selectable[$prevIdx]
+            DrawEntry $selectable[$selIdx]
+        }
     }
+}
+} finally {
+    $global:MsInMain = $false
+    $global:MsExit   = $false
 }

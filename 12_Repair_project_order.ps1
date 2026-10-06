@@ -2,6 +2,7 @@ $w          = 55
 $border     = "=" * $w
 $rule       = "-" * $w
 $prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history")
+. (Join-Path $PSScriptRoot "lib\Menu.ps1")
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
@@ -21,34 +22,13 @@ $pwHash  = [System.BitConverter]::ToString(
                )).Replace("-","").ToLower()
 if ($pwHash -ne "15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225") {
     Write-Host "  Access denied." -ForegroundColor Red
-    Write-Host ""
+    Show-NavExit
     return
 }
 
 # -- Confirm ------------------------------------------------------------------
-$cItems = @("Run", "Back to main menu")
-$cSel   = 0
-$cTop   = [Console]::CursorTop
-[Console]::SetCursorPosition(0, $cTop)
-Write-Host ("  > " + $cItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-[Console]::SetCursorPosition(0, $cTop + 1)
-Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
-[Console]::SetCursorPosition(0, $cTop + 2)
-:confirmLoop while ($true) {
-    $ck = [Console]::ReadKey($true)
-    if ($ck.Key -eq [ConsoleKey]::UpArrow -or $ck.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $cSel; $cSel = 1 - $cSel
-        [Console]::SetCursorPosition(0, $cTop + $p)
-        Write-Host ("    " + $cItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkCyan" }) -NoNewline
-        [Console]::SetCursorPosition(0, $cTop + $cSel)
-        Write-Host ("  > " + $cItems[$cSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } elseif ($ck.Key -eq [ConsoleKey]::Enter) {
-        if ($cSel -eq 1) { Clear-Host; .\Main.ps1; return }
-        break confirmLoop
-    } elseif ($ck.Key -eq [ConsoleKey]::Escape) {
-        Clear-Host; .\Main.ps1; return
-    }
-}
+$r = Show-Menu -Items @("Run", "Back to main menu") -AllowEscape
+if ($r.Action -ne "select" -or $r.Index -eq 1) { Return-ToMain; return }
 Write-Host ""
 
 # ── Root ──────────────────────────────────────────────────────────────────────
@@ -64,23 +44,7 @@ if ($analyticsCol -eq "") {
     Write-Host "  Analytics column number cannot be empty." -ForegroundColor Red
     Write-Host ""
     Write-Host "  $rule" -ForegroundColor DarkCyan
-    $nItems = @("Back to main menu", "Exit"); $nSel = 0
-    $nTop = [Console]::CursorTop
-    [Console]::SetCursorPosition(0, $nTop);     Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 1); Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 2)
-    while ($true) {
-        $k = [Console]::ReadKey($true)
-        if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-            $p = $nSel; $nSel = 1 - $nSel
-            [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-            [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-            if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-            else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-            return
-        }
-    }
+    Show-NavExit
     return
 }
 
@@ -99,23 +63,7 @@ if (-not (Test-Path $analyticsPath)) {
     Write-Host "  Path not found: $analyticsPath" -ForegroundColor Red
     Write-Host ""
     Write-Host "  $rule" -ForegroundColor DarkCyan
-    $nItems = @("Back to main menu", "Exit"); $nSel = 0
-    $nTop = [Console]::CursorTop
-    [Console]::SetCursorPosition(0, $nTop);     Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 1); Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 2)
-    while ($true) {
-        $k = [Console]::ReadKey($true)
-        if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-            $p = $nSel; $nSel = 1 - $nSel
-            [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-            [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-            if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-            else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-            return
-        }
-    }
+    Show-NavExit
     return
 }
 
@@ -146,23 +94,7 @@ if ($projects.Count -eq 0) {
     Write-Host "  No projects with project_info.json found in: $analyticsPath" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  $rule" -ForegroundColor DarkCyan
-    $nItems = @("Back to main menu", "Exit"); $nSel = 0
-    $nTop = [Console]::CursorTop
-    [Console]::SetCursorPosition(0, $nTop);     Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 1); Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 2)
-    while ($true) {
-        $k = [Console]::ReadKey($true)
-        if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-            $p = $nSel; $nSel = 1 - $nSel
-            [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-            [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-            if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-            else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-            return
-        }
-    }
+    Show-NavExit
     return
 }
 
@@ -186,43 +118,56 @@ Write-Host "  * = number will change" -ForegroundColor DarkCyan
 Write-Host ""
 
 # ── Confirm ───────────────────────────────────────────────────────────────────
-$cItems = @("Yes, apply changes", "No, cancel")
-$cSel   = 0
-$cTop   = [Console]::CursorTop
-[Console]::SetCursorPosition(0, $cTop);     Write-Host ("  > " + $cItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-[Console]::SetCursorPosition(0, $cTop + 1); Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-[Console]::SetCursorPosition(0, $cTop + 2)
-while ($true) {
-    $k = [Console]::ReadKey($true)
-    if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $cSel; $cSel = 1 - $cSel
-        [Console]::SetCursorPosition(0, $cTop + $p);    Write-Host ("    " + $cItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-        [Console]::SetCursorPosition(0, $cTop + $cSel); Write-Host ("  > " + $cItems[$cSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-        [Console]::SetCursorPosition(0, $cTop + 2)
-        if ($k.Key -ne [ConsoleKey]::Escape -and $cSel -eq 0) { break }
-        Write-Host "  Cancelled." -ForegroundColor DarkYellow
-        Write-Host ""
-        Write-Host "  $rule" -ForegroundColor DarkCyan
-        $nItems = @("Back to main menu", "Exit"); $nSel = 0
-        $nTop = [Console]::CursorTop
-        [Console]::SetCursorPosition(0, $nTop);     Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        [Console]::SetCursorPosition(0, $nTop + 1); Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-        [Console]::SetCursorPosition(0, $nTop + 2)
-        while ($true) {
-            $k2 = [Console]::ReadKey($true)
-            if ($k2.Key -eq [ConsoleKey]::UpArrow -or $k2.Key -eq [ConsoleKey]::DownArrow) {
-                $p = $nSel; $nSel = 1 - $nSel
-                [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-                [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-            } elseif ($k2.Key -eq [ConsoleKey]::Enter -or $k2.Key -eq [ConsoleKey]::Escape) {
-                if ($k2.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-                else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-                return
-            }
-        }
-        return
+$cRes = Show-Menu -Items @("Yes, apply changes", "No, cancel") -AllowEscape
+if ($cRes.Action -ne "select" -or $cRes.Index -eq 1) {
+    Write-Host "  Cancelled." -ForegroundColor DarkYellow
+    Write-Host ""
+    Write-Host "  $rule" -ForegroundColor DarkCyan
+    Show-NavExit
+    return
+}
+
+# ── Backup ────────────────────────────────────────────────────────────────────
+# Copies each data file to <Root>\Backup\<Script>_<yyyyMMdd_HHmmss>\<path relative
+# to Projects> once per run, before it is overwritten. Folder is created lazily.
+$backupBase = $projectsRoot
+$backupDir  = Join-Path (Join-Path $root "Backup") ([System.IO.Path]::GetFileNameWithoutExtension($PSCommandPath) + "_" + (Get-Date -Format "yyyyMMdd_HHmmss"))
+$backupDone = @{}
+function Backup-DataFile ([string]$path) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $true }
+    $full = [System.IO.Path]::GetFullPath($path)
+    $key  = $full.ToLower()
+    if ($backupDone.ContainsKey($key)) { return $true }
+    $base = [System.IO.Path]::GetFullPath($backupBase).TrimEnd("\")
+    if ($full.StartsWith($base + "\", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $rel = $full.Substring($base.Length + 1)
+    } else {
+        $rel = ($full -replace '^([A-Za-z]):', '$1').TrimStart("\")
     }
+    $dest = Join-Path $backupDir $rel
+    try {
+        [System.IO.Directory]::CreateDirectory((Split-Path $dest -Parent)) | Out-Null
+        Copy-Item -LiteralPath $full -Destination $dest -Force -ErrorAction Stop
+    } catch {
+        Write-Host "  [ERROR] Backup failed: $full - $_" -ForegroundColor Red
+        return $false
+    }
+    $backupDone[$key] = $true
+    return $true
+}
+
+# Back up every file this run will overwrite before changing anything
+$backupOk = $true
+foreach ($p in $projects) {
+    if (-not (Backup-DataFile (Join-Path $p.Folder "project_info.json"))) { $backupOk = $false; break }
+}
+if ($backupOk) { $backupOk = Backup-DataFile $logFile }
+if (-not $backupOk) {
+    Write-Host "  No changes applied." -ForegroundColor DarkYellow
+    Write-Host ""
+    Write-Host "  $rule" -ForegroundColor DarkCyan
+    Show-NavExit
+    return
 }
 
 # ── Apply ─────────────────────────────────────────────────────────────────────
@@ -260,6 +205,7 @@ foreach ($p in $projects) {
 $newLogRows | Export-Csv $logFile -NoTypeInformation
 Write-Host ""
 Write-Host "  Rebuilt : $logFile" -ForegroundColor Green
+if ($backupDone.Count -gt 0) { Write-Host "  Backup : $backupDir" -ForegroundColor DarkGray }
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 Write-Host ""
@@ -268,25 +214,7 @@ Write-Host "  Done!  $($projects.Count) project(s) re-numbered." -ForegroundColo
 Write-Host "  $border" -ForegroundColor DarkCyan
 
 # ── Navigation ────────────────────────────────────────────────────────────────
-$nItems = @("Back to main menu", "Exit")
-$nSel   = 0
 Write-Host ""
 Write-Host "  $rule" -ForegroundColor DarkCyan
-$nTop = [Console]::CursorTop
-[Console]::SetCursorPosition(0, $nTop)
-Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-[Console]::SetCursorPosition(0, $nTop + 1)
-Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-[Console]::SetCursorPosition(0, $nTop + 2)
-while ($true) {
-    $k = [Console]::ReadKey($true)
-    if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $nSel; $nSel = 1 - $nSel
-        [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-        [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-        if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-        else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-        return
-    }
-}
+Show-NavExit
+return

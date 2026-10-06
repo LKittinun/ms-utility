@@ -5,6 +5,7 @@ $_cfg       = if (Test-Path (Join-Path $PSScriptRoot "config.json")) { Get-Conte
 $_rootBase  = if ($_cfg -and $_cfg.Root) { $_cfg.Root } else { "Z:\Proteomics" }
 $root       = Join-Path $_rootBase "Projects"
 $prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history")
+. (Join-Path $PSScriptRoot "lib\Menu.ps1")
 
 Clear-Host
 Write-Host ""
@@ -24,34 +25,13 @@ $pwHash  = [System.BitConverter]::ToString(
                )).Replace("-","").ToLower()
 if ($pwHash -ne "15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225") {
     Write-Host "  Access denied." -ForegroundColor Red
-    Write-Host ""
+    Show-NavExit
     return
 }
 
 # -- Confirm ------------------------------------------------------------------
-$cItems = @("Run", "Back to main menu")
-$cSel   = 0
-$cTop   = [Console]::CursorTop
-[Console]::SetCursorPosition(0, $cTop)
-Write-Host ("  > " + $cItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-[Console]::SetCursorPosition(0, $cTop + 1)
-Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
-[Console]::SetCursorPosition(0, $cTop + 2)
-:confirmLoop while ($true) {
-    $ck = [Console]::ReadKey($true)
-    if ($ck.Key -eq [ConsoleKey]::UpArrow -or $ck.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $cSel; $cSel = 1 - $cSel
-        [Console]::SetCursorPosition(0, $cTop + $p)
-        Write-Host ("    " + $cItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkCyan" }) -NoNewline
-        [Console]::SetCursorPosition(0, $cTop + $cSel)
-        Write-Host ("  > " + $cItems[$cSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } elseif ($ck.Key -eq [ConsoleKey]::Enter) {
-        if ($cSel -eq 1) { Clear-Host; .\Main.ps1; return }
-        break confirmLoop
-    } elseif ($ck.Key -eq [ConsoleKey]::Escape) {
-        Clear-Host; .\Main.ps1; return
-    }
-}
+$r = Show-Menu -Items @("Run", "Back to main menu") -AllowEscape
+if ($r.Action -ne "select" -or $r.Index -eq 1) { Return-ToMain; return }
 Write-Host ""
 
 # -- Locate CSV ---------------------------------------------------------------
@@ -64,44 +44,24 @@ if ($mostRecent) {
 }
 $csvStart = if ($mostRecent) { $mostRecent.FullName } else { $root }
 $csvPath  = Read-FilePath "Select the edited overview CSV" $csvStart "CSV files (*.csv)|*.csv|All files (*.*)|*.*"
-if ($csvPath -eq "") { Clear-Host; .\Main.ps1; return }
+if ($csvPath -eq "") { Return-ToMain; return }
 
-function Show-NavExit ($msg) {
+# Print a message, then the shared "Back to main menu / Exit" footer.
+# Caller must `return` right after.
+function Show-NavMessage ($msg) {
     Write-Host ""
     Write-Host "  $msg" -ForegroundColor Yellow
-    Write-Host ""
-    $nItems = @("Back to main menu", "Exit"); $nSel = 0
-    $nTop = [Console]::CursorTop
-    [Console]::SetCursorPosition(0, $nTop)
-    Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 1)
-    Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 2)
-    while ($true) {
-        $k = [Console]::ReadKey($true)
-        if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-            $p = $nSel; $nSel = 1 - $nSel
-            [Console]::SetCursorPosition(0, $nTop + $p)
-            Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-            [Console]::SetCursorPosition(0, $nTop + $nSel)
-            Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-            if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-            else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-            return $true
-        }
-    }
-    return $true
+    Show-NavExit
 }
 
-if (-not (Test-Path $csvPath)) { Show-NavExit "File not found: $csvPath"; return }
+if (-not (Test-Path $csvPath)) { Show-NavMessage "File not found: $csvPath"; return }
 
 # -- Read and validate CSV ----------------------------------------------------
 $csvRows = @(Import-Csv -Path $csvPath -ErrorAction SilentlyContinue)
-if ($csvRows.Count -eq 0) { Show-NavExit "CSV is empty."; return }
+if ($csvRows.Count -eq 0) { Show-NavMessage "CSV is empty."; return }
 
 $cols = $csvRows[0].PSObject.Properties.Name
-if ($cols -notcontains "ProjectID") { Show-NavExit "CSV missing required column: ProjectID"; return }
+if ($cols -notcontains "ProjectID") { Show-NavMessage "CSV missing required column: ProjectID"; return }
 
 # -- Scan project_info.json files ---------------------------------------------
 Write-Host ""
@@ -179,7 +139,7 @@ foreach ($row in $csvRows) {
 Write-Host ""
 
 if ($changes.Count -eq 0) {
-    Show-NavExit "No changes detected - CSV matches current project data."
+    Show-NavMessage "No changes detected - CSV matches current project data."
     return
 }
 
@@ -204,33 +164,57 @@ Write-Host "  Note: SampleFolders changes update metadata only, not folders on d
 Write-Host ""
 
 # -- Apply confirm ------------------------------------------------------------
-$aItems = @("Apply changes", "Cancel")
-$aSel   = 0
-$aTop   = [Console]::CursorTop
-[Console]::SetCursorPosition(0, $aTop)
-Write-Host ("  > " + $aItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-[Console]::SetCursorPosition(0, $aTop + 1)
-Write-Host ("    " + $aItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-[Console]::SetCursorPosition(0, $aTop + 2)
-while ($true) {
-    $k = [Console]::ReadKey($true)
-    if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $aSel; $aSel = 1 - $aSel
-        [Console]::SetCursorPosition(0, $aTop + $p)
-        Write-Host ("    " + $aItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-        [Console]::SetCursorPosition(0, $aTop + $aSel)
-        Write-Host ("  > " + $aItems[$aSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        [Console]::SetCursorPosition(0, $aTop + 2)
-    } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-        [Console]::SetCursorPosition(0, $aTop + 2)
-        if ($k.Key -eq [ConsoleKey]::Escape -or $aSel -eq 1) {
-            Show-NavExit "Cancelled - no changes applied."
-            return
-        }
-        break
-    }
+$aRes = Show-Menu -Items @("Apply changes", "Cancel") -AllowEscape
+if ($aRes.Action -ne "select" -or $aRes.Index -eq 1) {
+    Show-NavMessage "Cancelled - no changes applied."
+    return
 }
 Write-Host ""
+
+# -- Backup -------------------------------------------------------------------
+# Copies each data file to <Root>\Backup\<Script>_<yyyyMMdd_HHmmss>\<path relative
+# to Projects> once per run, before it is overwritten. Folder is created lazily.
+$backupBase = $root
+$backupDir  = Join-Path (Join-Path $_rootBase "Backup") ([System.IO.Path]::GetFileNameWithoutExtension($PSCommandPath) + "_" + (Get-Date -Format "yyyyMMdd_HHmmss"))
+$backupDone = @{}
+function Backup-DataFile ([string]$path) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $true }
+    $full = [System.IO.Path]::GetFullPath($path)
+    $key  = $full.ToLower()
+    if ($backupDone.ContainsKey($key)) { return $true }
+    $base = [System.IO.Path]::GetFullPath($backupBase).TrimEnd("\")
+    if ($full.StartsWith($base + "\", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $rel = $full.Substring($base.Length + 1)
+    } else {
+        $rel = ($full -replace '^([A-Za-z]):', '$1').TrimStart("\")
+    }
+    $dest = Join-Path $backupDir $rel
+    try {
+        [System.IO.Directory]::CreateDirectory((Split-Path $dest -Parent)) | Out-Null
+        Copy-Item -LiteralPath $full -Destination $dest -Force -ErrorAction Stop
+    } catch {
+        Write-Host "  [ERROR] Backup failed: $full - $_" -ForegroundColor Red
+        return $false
+    }
+    $backupDone[$key] = $true
+    return $true
+}
+
+# Back up every file this run will overwrite before changing anything:
+# each changed project_info.json, and its column_log.csv if it has a row for the project
+$backupOk = $true
+foreach ($c in $changes) {
+    if (-not (Backup-DataFile $c.Path)) { $backupOk = $false; break }
+    $logFile = Join-Path (Split-Path (Split-Path $c.Path)) "column_log.csv"
+    if (Test-Path $logFile) {
+        $hasRow = @(Import-Csv $logFile | Where-Object { $_.ProjectID -eq $c.ID }).Count -gt 0
+        if ($hasRow -and -not (Backup-DataFile $logFile)) { $backupOk = $false; break }
+    }
+}
+if (-not $backupOk) {
+    Show-NavMessage "Backup failed - no changes applied."
+    return
+}
 
 # -- Apply --------------------------------------------------------------------
 $updated = 0
@@ -277,28 +261,9 @@ foreach ($c in $changes) {
 
 Write-Host ""
 Write-Host "  $updated project(s) updated." -ForegroundColor Cyan
+if ($backupDone.Count -gt 0) { Write-Host "  Backup : $backupDir" -ForegroundColor DarkGray }
 Write-Host ""
 
 # -- Navigation ---------------------------------------------------------------
-$nItems = @("Back to main menu", "Exit")
-$nSel   = 0
-$nTop   = [Console]::CursorTop
-[Console]::SetCursorPosition(0, $nTop)
-Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-[Console]::SetCursorPosition(0, $nTop + 1)
-Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-[Console]::SetCursorPosition(0, $nTop + 2)
-while ($true) {
-    $k = [Console]::ReadKey($true)
-    if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $nSel; $nSel = 1 - $nSel
-        [Console]::SetCursorPosition(0, $nTop + $p)
-        Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-        [Console]::SetCursorPosition(0, $nTop + $nSel)
-        Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-        if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-        else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-        return
-    }
-}
+Show-NavExit
+return

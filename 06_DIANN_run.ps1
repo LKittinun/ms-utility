@@ -2,6 +2,8 @@ $w      = 55
 $border = "=" * $w
 $rule   = "-" * $w
 
+. (Join-Path $PSScriptRoot "lib\Menu.ps1")
+
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host "   [6]  DIA-NN default run              (command line)" -ForegroundColor Cyan
@@ -9,29 +11,8 @@ Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host ""
 
 # -- Confirm ------------------------------------------------------------------
-$cItems = @("Run", "Back to main menu")
-$cSel   = 0
-$cTop   = [Console]::CursorTop
-[Console]::SetCursorPosition(0, $cTop)
-Write-Host ("  > " + $cItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-[Console]::SetCursorPosition(0, $cTop + 1)
-Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
-[Console]::SetCursorPosition(0, $cTop + 2)
-:confirmLoop while ($true) {
-    $ck = [Console]::ReadKey($true)
-    if ($ck.Key -eq [ConsoleKey]::UpArrow -or $ck.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $cSel; $cSel = 1 - $cSel
-        [Console]::SetCursorPosition(0, $cTop + $p)
-        Write-Host ("    " + $cItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkCyan" }) -NoNewline
-        [Console]::SetCursorPosition(0, $cTop + $cSel)
-        Write-Host ("  > " + $cItems[$cSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } elseif ($ck.Key -eq [ConsoleKey]::Enter) {
-        if ($cSel -eq 1) { Clear-Host; .\Main.ps1; return }
-        break confirmLoop
-    } elseif ($ck.Key -eq [ConsoleKey]::Escape) {
-        Clear-Host; .\Main.ps1; return
-    }
-}
+$r = Show-Menu -Items @("Run", "Back to main menu") -AllowEscape
+if ($r.Action -ne "select" -or $r.Index -eq 1) { Return-ToMain; return }
 Write-Host ""
 
 # -- Load / auto-create diann_config.json -------------------------------------
@@ -63,7 +44,7 @@ if (-not (Test-Path $diannCfg.DiannExe)) {
 # -- Path input ---------------------------------------------------------------
 . (Join-Path $PSScriptRoot "lib\Pickers.ps1")
 $path = Read-FolderPath "Select the project folder"
-if ($path -eq "") { Clear-Host; .\Main.ps1; return }
+if ($path -eq "") { Return-ToMain; return }
 
 if (-not (Test-Path $path)) {
     Write-Host "  Path not found: $path" -ForegroundColor Red
@@ -97,63 +78,20 @@ if (-not (Test-Path $path)) {
     } else {
         Write-Host ""
         Write-Host "  Select subfolder to run DIA-NN on:" -ForegroundColor Cyan
-        $pSel = 0
-        $pTop = [Console]::CursorTop
-        for ($pi = 0; $pi -lt $candidates.Count; $pi++) {
-            $label = "  $($candidates[$pi].Name)  [$($candidates[$pi].RawCount) raw files]"
-            [Console]::SetCursorPosition(0, $pTop + $pi)
-            if ($pi -eq 0) {
-                Write-Host ("> $label").PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-            } else {
-                Write-Host ("  $label").PadRight($w + 4) -ForegroundColor White -NoNewline
-            }
-        }
-        [Console]::SetCursorPosition(0, $pTop + $candidates.Count)
-        :pickerLoop while ($true) {
-            $pk = [Console]::ReadKey($true)
-            if ($pk.Key -eq [ConsoleKey]::UpArrow -or $pk.Key -eq [ConsoleKey]::DownArrow) {
-                $oldSel = $pSel
-                if ($pk.Key -eq [ConsoleKey]::UpArrow) { $pSel = ($pSel - 1 + $candidates.Count) % $candidates.Count }
-                else { $pSel = ($pSel + 1) % $candidates.Count }
-                [Console]::SetCursorPosition(0, $pTop + $oldSel)
-                Write-Host ("    $($candidates[$oldSel].Name)  [$($candidates[$oldSel].RawCount) raw files]").PadRight($w + 4) -ForegroundColor White -NoNewline
-                [Console]::SetCursorPosition(0, $pTop + $pSel)
-                Write-Host (">   $($candidates[$pSel].Name)  [$($candidates[$pSel].RawCount) raw files]").PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-            } elseif ($pk.Key -eq [ConsoleKey]::Enter) {
-                $targetFolder = $candidates[$pSel].FullName
-                break pickerLoop
-            } elseif ($pk.Key -eq [ConsoleKey]::Escape) {
-                Clear-Host; .\Main.ps1; return
-            }
-        }
+        $pLabels = @(foreach ($c in $candidates) { "$($c.Name)  [$($c.RawCount) raw files]" })
+        $r = Show-Menu -Items $pLabels -AllowEscape
+        if ($r.Action -ne "select") { Return-ToMain; return }
+        $targetFolder = $candidates[$r.Index].FullName
         Write-Host ""
     }
 }
 
 if ($null -eq $targetFolder) {
     # -- Navigation (error / no files case) -----------------------------------
-    $nItems = @("Back to main menu", "Exit")
-    $nSel   = 0
     Write-Host ""
     Write-Host "  $rule" -ForegroundColor DarkCyan
-    $nTop = [Console]::CursorTop
-    [Console]::SetCursorPosition(0, $nTop)
-    Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 1)
-    Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 2)
-    while ($true) {
-        $k = [Console]::ReadKey($true)
-        if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-            $p = $nSel; $nSel = 1 - $nSel
-            [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-            [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-            if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-            else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-            return
-        }
-    }
+    Show-NavExit
+    return
 }
 
 # -- Parameter defaults (set once, preserved across re-runs) ------------------
@@ -172,38 +110,13 @@ $rawFiles = @(Get-ChildItem -Path $targetFolder -Filter *.raw -File -ErrorAction
 if ($rawFiles.Count -eq 0) {
     Write-Host ""
     Write-Host "  No .raw files found in: $(Split-Path $targetFolder -Leaf)" -ForegroundColor Red
-    $nItems = @("Re-run same folder", "Back to main menu", "Exit")
-    $nSel   = 0
     Write-Host ""
     Write-Host "  $rule" -ForegroundColor DarkCyan
-    $nTop = [Console]::CursorTop
-    for ($ni = 0; $ni -lt $nItems.Count; $ni++) {
-        [Console]::SetCursorPosition(0, $nTop + $ni)
-        $color = if ($ni -eq 2) { "DarkYellow" } else { "Cyan" }
-        if ($ni -eq 0) {
-            Write-Host ("  > " + $nItems[$ni]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } else {
-            Write-Host ("    " + $nItems[$ni]).PadRight($w + 4) -ForegroundColor $color -NoNewline
-        }
-    }
-    [Console]::SetCursorPosition(0, $nTop + $nItems.Count)
-    while ($true) {
-        $k = [Console]::ReadKey($true)
-        if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-            $p = $nSel
-            if ($k.Key -eq [ConsoleKey]::UpArrow) { $nSel = ($nSel - 1 + $nItems.Count) % $nItems.Count }
-            else { $nSel = ($nSel + 1) % $nItems.Count }
-            $pc = if ($p -eq 2) { "DarkYellow" } else { "Cyan" }
-            [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4)    -ForegroundColor $pc -NoNewline
-            [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } elseif ($k.Key -eq [ConsoleKey]::Enter) {
-            if ($nSel -eq 0) { continue runLoop }
-            if ($nSel -eq 1) { Clear-Host; .\Main.ps1; return }
-            [Console]::SetCursorPosition(0, $nTop + $nItems.Count + 1); Write-Host "  Exiting..." -ForegroundColor DarkYellow; return
-        } elseif ($k.Key -eq [ConsoleKey]::Escape) {
-            Clear-Host; .\Main.ps1; return
-        }
-    }
+    $r = Show-Menu -Items @("Re-run same folder", "Back to main menu", "Exit") -AllowEscape
+    if ($r.Action -ne "select") { Return-ToMain; return }
+    if ($r.Index -eq 0) { continue runLoop }
+    if ($r.Index -eq 1) { Return-ToMain; return }
+    Request-Exit; return
 }
 
 # -- Check for locked files (still being acquired) ----------------------------
@@ -246,38 +159,13 @@ if ($lockedFiles.Count -gt 0) {
 }
 
 if ($abortRun) {
-    $nItems = @("Re-run same folder", "Back to main menu", "Exit")
-    $nSel   = 0
     Write-Host ""
     Write-Host "  $rule" -ForegroundColor DarkCyan
-    $nTop = [Console]::CursorTop
-    for ($ni = 0; $ni -lt $nItems.Count; $ni++) {
-        [Console]::SetCursorPosition(0, $nTop + $ni)
-        $color = if ($ni -eq 2) { "DarkYellow" } else { "Cyan" }
-        if ($ni -eq 0) {
-            Write-Host ("  > " + $nItems[$ni]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } else {
-            Write-Host ("    " + $nItems[$ni]).PadRight($w + 4) -ForegroundColor $color -NoNewline
-        }
-    }
-    [Console]::SetCursorPosition(0, $nTop + $nItems.Count)
-    while ($true) {
-        $k = [Console]::ReadKey($true)
-        if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-            $p = $nSel
-            if ($k.Key -eq [ConsoleKey]::UpArrow) { $nSel = ($nSel - 1 + $nItems.Count) % $nItems.Count }
-            else { $nSel = ($nSel + 1) % $nItems.Count }
-            $pc = if ($p -eq 2) { "DarkYellow" } else { "Cyan" }
-            [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4)    -ForegroundColor $pc -NoNewline
-            [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } elseif ($k.Key -eq [ConsoleKey]::Enter) {
-            if ($nSel -eq 0) { continue runLoop }
-            if ($nSel -eq 1) { Clear-Host; .\Main.ps1; return }
-            [Console]::SetCursorPosition(0, $nTop + $nItems.Count + 1); Write-Host "  Exiting..." -ForegroundColor DarkYellow; return
-        } elseif ($k.Key -eq [ConsoleKey]::Escape) {
-            Clear-Host; .\Main.ps1; return
-        }
-    }
+    $r = Show-Menu -Items @("Re-run same folder", "Back to main menu", "Exit") -AllowEscape
+    if ($r.Action -ne "select") { Return-ToMain; return }
+    if ($r.Index -eq 0) { continue runLoop }
+    if ($r.Index -eq 1) { Return-ToMain; return }
+    Request-Exit; return
 }
 
 # -- Check for existing .quant files ------------------------------------------
@@ -347,51 +235,27 @@ $outLibParquet = Join-Path $resultDir "report-lib.parquet"
     Write-Host "  $rule" -ForegroundColor DarkCyan
     Write-Host ""
 
-    $pItems = @("Run DIA-NN", "Edit parameters", "Back to main menu")
-    $pSel   = 0
-    $pTop   = [Console]::CursorTop
-    for ($pi = 0; $pi -lt $pItems.Count; $pi++) {
-        [Console]::SetCursorPosition(0, $pTop + $pi)
-        if ($pi -eq 0) {
-            Write-Host ("  > " + $pItems[$pi]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } else {
-            Write-Host ("    " + $pItems[$pi]).PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
-        }
+    $r = Show-Menu -Items @("Run DIA-NN", "Edit parameters", "Back to main menu") -AllowEscape
+    if ($r.Action -ne "select") { Return-ToMain; return }
+    if ($r.Index -eq 0) { break previewLoop }
+    if ($r.Index -eq 1) {
+        Write-Host ""
+        $inMa  = Read-Host "  Mass accuracy MS2 ppm    (current: $massAcc)"
+        $inMs1 = Read-Host "  Mass accuracy MS1 ppm    (current: $massAccMs1)"
+        $inThr = Read-Host "  Threads                  (current: $threads)"
+        $mbrCur  = if ($mbr)        { "Y" } else { "N" }
+        $sortCur = if ($sortByDate) { "D" } else { "N" }
+        $inMbr  = Read-Host "  Match between runs (MBR) (current: $mbrCur) [Y/N]"
+        $inSort = Read-Host "  File order               (current: $sortCur) [N]ame / [D]ate acquired"
+        if ($inMa   -ne "") { $massAcc    = [int]$inMa  }
+        if ($inMs1  -ne "") { $massAccMs1 = [int]$inMs1 }
+        if ($inThr  -ne "") { $threads    = [int]$inThr }
+        if ($inMbr  -ne "") { $mbr        = ($inMbr  -match '^[Yy]') }
+        if ($inSort -ne "") { $sortByDate = ($inSort -match '^[Dd]') }
+        Write-Host ""
+        continue previewLoop
     }
-    [Console]::SetCursorPosition(0, $pTop + $pItems.Count)
-
-    :pickerLoop while ($true) {
-        $pk = [Console]::ReadKey($true)
-        if ($pk.Key -eq [ConsoleKey]::UpArrow -or $pk.Key -eq [ConsoleKey]::DownArrow) {
-            $pp = $pSel
-            if ($pk.Key -eq [ConsoleKey]::UpArrow) { $pSel = ($pSel - 1 + $pItems.Count) % $pItems.Count }
-            else { $pSel = ($pSel + 1) % $pItems.Count }
-            [Console]::SetCursorPosition(0, $pTop + $pp);   Write-Host ("    " + $pItems[$pp]).PadRight($w + 4)   -ForegroundColor DarkCyan -NoNewline
-            [Console]::SetCursorPosition(0, $pTop + $pSel); Write-Host ("  > " + $pItems[$pSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } elseif ($pk.Key -eq [ConsoleKey]::Enter) {
-            if ($pSel -eq 0) { break previewLoop }
-            if ($pSel -eq 1) {
-                Write-Host ""
-                $inMa  = Read-Host "  Mass accuracy MS2 ppm    (current: $massAcc)"
-                $inMs1 = Read-Host "  Mass accuracy MS1 ppm    (current: $massAccMs1)"
-                $inThr = Read-Host "  Threads                  (current: $threads)"
-                $mbrCur  = if ($mbr)        { "Y" } else { "N" }
-                $sortCur = if ($sortByDate) { "D" } else { "N" }
-                $inMbr  = Read-Host "  Match between runs (MBR) (current: $mbrCur) [Y/N]"
-                $inSort = Read-Host "  File order               (current: $sortCur) [N]ame / [D]ate acquired"
-                if ($inMa   -ne "") { $massAcc    = [int]$inMa  }
-                if ($inMs1  -ne "") { $massAccMs1 = [int]$inMs1 }
-                if ($inThr  -ne "") { $threads    = [int]$inThr }
-                if ($inMbr  -ne "") { $mbr        = ($inMbr  -match '^[Yy]') }
-                if ($inSort -ne "") { $sortByDate = ($inSort -match '^[Dd]') }
-                Write-Host ""
-                continue previewLoop
-            }
-            if ($pSel -eq 2) { Clear-Host; .\Main.ps1; return }
-        } elseif ($pk.Key -eq [ConsoleKey]::Escape) {
-            Clear-Host; .\Main.ps1; return
-        }
-    }
+    Return-ToMain; return
 }
 
 # -- Create Result folder and run ---------------------------------------------
@@ -414,37 +278,22 @@ if ($exitCode -ne 0) {
 }
 
 # -- Navigation ---------------------------------------------------------------
-$nItems  = @("Open Result folder", "Re-run same folder", "Run analysis report (next step)", "Back to main menu")
-$nColors = @("Cyan", "Cyan", "Cyan", "Cyan")
-$nSel    = 0
+$nItems = @("Open Result folder", "Re-run same folder", "Run analysis report (next step)", "Back to main menu")
+$nSel   = 0
 Write-Host ""
 Write-Host "  $rule" -ForegroundColor DarkCyan
-$nTop = [Console]::CursorTop
-for ($ni = 0; $ni -lt $nItems.Count; $ni++) {
-    [Console]::SetCursorPosition(0, $nTop + $ni)
-    if ($ni -eq 0) {
-        Write-Host ("  > " + $nItems[$ni]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } else {
-        Write-Host ("    " + $nItems[$ni]).PadRight($w + 4) -ForegroundColor $nColors[$ni] -NoNewline
-    }
-}
-[Console]::SetCursorPosition(0, $nTop + $nItems.Count)
+$nTop = -1
 while ($true) {
-    $k = [Console]::ReadKey($true)
-    if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $nSel
-        if ($k.Key -eq [ConsoleKey]::UpArrow) { $nSel = ($nSel - 1 + $nItems.Count) % $nItems.Count }
-        else { $nSel = ($nSel + 1) % $nItems.Count }
-        [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $nColors[$p] -NoNewline
-        [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } elseif ($k.Key -eq [ConsoleKey]::Enter) {
-        if ($nSel -eq 0)      { Start-Process explorer.exe $resultDir }
-        elseif ($nSel -eq 1)  { continue runLoop }
-        elseif ($nSel -eq 2)  { Clear-Host; & ".\07_Report_generator.ps1"; return }
-        else                  { Clear-Host; .\Main.ps1; return }
-    } elseif ($k.Key -eq [ConsoleKey]::Escape) {
-        Clear-Host; .\Main.ps1; return
-    }
+    # Redraw in place so "Open Result folder" keeps the same menu on screen
+    if ($nTop -ge 0) { [Console]::SetCursorPosition(0, $nTop) }
+    $r = Show-Menu -Items $nItems -Selected $nSel -AllowEscape
+    $nTop = [Console]::CursorTop - $nItems.Count
+    if ($r.Action -ne "select") { Return-ToMain; return }
+    $nSel = $r.Index
+    if ($nSel -eq 0)      { Start-Process explorer.exe $resultDir }
+    elseif ($nSel -eq 1)  { continue runLoop }
+    elseif ($nSel -eq 2)  { Clear-Host; & ".\07_Report_generator.ps1"; return }
+    else                  { Return-ToMain; return }
 }
 
 } # end :runLoop

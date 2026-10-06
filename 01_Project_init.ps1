@@ -4,6 +4,7 @@ $rule       = "-" * $w
 $prohibited = @("blank", "raw_summary", "prtc", "sst", "column_usage_history", "result")
 
 . (Join-Path $PSScriptRoot "lib\Menu.ps1")
+. (Join-Path $PSScriptRoot "lib\Names.ps1")
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
@@ -14,7 +15,7 @@ Write-Host ""
 
 # -- Confirm ------------------------------------------------------------------
 $r = Show-Menu -Items @("Run", "Back to main menu") -AllowEscape
-if ($r.Action -ne "select" -or $r.Index -eq 1) { Clear-Host; .\Main.ps1; return }
+if ($r.Action -ne "select" -or $r.Index -eq 1) { Return-ToMain; return }
 Write-Host ""
 
 # ── Root ──────────────────────────────────────────────────────────────────────
@@ -43,49 +44,6 @@ function ConvertTo-SafeName([string]$s) {
     return (($s.Trim() -replace '[\s]+', '_') -replace '[<>:"/\\|?*]', '')
 }
 
-# Collapse whitespace + lowercase, for comparing PI names
-function Get-NameKey([string]$s) {
-    return ($s -replace '\s+', ' ').Trim().ToLower()
-}
-
-# Levenshtein edit distance (case-insensitive): fewest single-letter
-# insert/delete/substitute edits turning $a into $b
-function Get-EditDistance([string]$a, [string]$b) {
-    $a = $a.ToLower(); $b = $b.ToLower(); $m = $b.Length + 1
-    $d = New-Object 'int[]' (($a.Length + 1) * $m)
-    for ($i = 0; $i -le $a.Length; $i++) { $d[$i * $m] = $i }
-    for ($j = 0; $j -le $b.Length; $j++) { $d[$j] = $j }
-    for ($i = 1; $i -le $a.Length; $i++) {
-        for ($j = 1; $j -le $b.Length; $j++) {
-            $cost = 1
-            if ($a[$i - 1] -eq $b[$j - 1]) { $cost = 0 }
-            $del = $d[($i - 1) * $m + $j] + 1
-            $ins = $d[$i * $m + $j - 1] + 1
-            $sub = $d[($i - 1) * $m + $j - 1] + $cost
-            $d[$i * $m + $j] = [Math]::Min([Math]::Min($del, $ins), $sub)
-        }
-    }
-    return $d[$a.Length * $m + $b.Length]
-}
-
-# Existing PI that a typed name probably means, or $null:
-#  1. an existing PI appears as a whole word in the typed name
-#     (e.g. "Assoc. Prof. Dr. Raphatphorn Navakanitworakul" -> "Raphatphorn")
-#  2. closest existing PI within 2 edits (1 edit for names under 5 letters)
-function Find-SimilarPI([string]$typed, [string[]]$pis) {
-    $words = @(($typed.ToLower() -split '[^a-z]+') | Where-Object { $_ -ne "" })
-    foreach ($p in $pis) {
-        if ($words.Count -gt 1 -and $words -contains (Get-NameKey $p)) { return $p }
-    }
-    $best = $null; $bestD = [int]::MaxValue
-    foreach ($p in $pis) {
-        $dist = Get-EditDistance (Get-NameKey $typed) (Get-NameKey $p)
-        $limit = 2
-        if ([Math]::Min($typed.Length, $p.Length) -lt 5) { $limit = 1 }
-        if ($dist -le $limit -and $dist -lt $bestD) { $best = $p; $bestD = $dist }
-    }
-    return $best
-}
 
 # ── Libraries ─────────────────────────────────────────────────────────────────
 $colLibFile = Join-Path $dataDir "columns.json"
@@ -680,40 +638,45 @@ if ($colInfoChanged) {
     } | ConvertTo-Json | Out-File $colInfoFile -Encoding UTF8
 }
 
-# ── Append to column_log.csv ──────────────────────────────────────────────────
-$logRow = [PSCustomObject]@{
-    ProjectID         = $projectID
-    ProjectNo         = $projectNo
-    Date              = $now
-    Project           = $projectName
-    PI                = if ($pi -eq "")       { $null } else { $pi }
-    AnalyticsColumn   = $analyticsCol
-    ColumnDescription = if ($colDesc -eq "")  { $null } else { $colDesc }
-    TrapColumn            = if ($trapCol -eq "")     { $null } else { $trapCol }
-    TrapColumnDescription = if ($trapColDesc -eq "") { $null } else { $trapColDesc }
-    SampleFolders     = $subfolders -join ";"
-}
-if (Test-Path $logFile) {
-    $existingRows = @(Import-Csv $logFile)
-    $matchIdx = -1
-    for ($ri = 0; $ri -lt $existingRows.Count; $ri++) {
-        if ($existingRows[$ri].ProjectID -and $existingRows[$ri].ProjectID -eq $projectID) { $matchIdx = $ri; break }
-    }
-    if ($matchIdx -lt 0) {
-        for ($ri = 0; $ri -lt $existingRows.Count; $ri++) {
-            if ($existingRows[$ri].Project -eq $projectName) { $matchIdx = $ri; break }
+# ── Rebuild column_log.csv ────────────────────────────────────────────────────
+# The log is derived from the project_info.json files under this column, so it
+# can never drift from them. Date = project Created.
+$logRows = @(
+    Get-ChildItem $analyticsPath -Directory | ForEach-Object {
+        $jp = Join-Path $_.FullName "project_info.json"
+        if (Test-Path $jp) {
+            $j = Get-Content $jp -Raw | ConvertFrom-Json
+            [PSCustomObject][ordered]@{
+                ProjectID             = $j.ProjectID
+                ProjectNo             = $j.ProjectNo
+                Date                  = $j.Created
+                Project               = $j.Project
+                PI                    = $j.PI
+                AnalyticsColumn       = $j.AnalyticsColumn
+                ColumnDescription     = $j.ColumnDescription
+                TrapColumn            = $j.TrapColumn
+                TrapColumnDescription = $j.TrapColumnDescription
+                SampleFolders         = (@($j.SampleFolders) | Where-Object { $_ }) -join ";"
+            }
         }
+    } | Sort-Object @{ Expression = { [int]("0" + $_.ProjectNo) } }, Date
+)
+# Old rows with no project folder are dropped - keep a copy of the old log first
+if (Test-Path $logFile) {
+    $keepIDs   = @($logRows | Where-Object { $_.ProjectID } | ForEach-Object { "$($_.ProjectID)" })
+    $keepNames = @($logRows | ForEach-Object { "$($_.Project)" })
+    $dropped   = @(Import-Csv $logFile | Where-Object {
+        -not (($_.ProjectID -and $keepIDs -contains $_.ProjectID) -or ($keepNames -contains $_.Project))
+    })
+    if ($dropped.Count -gt 0) {
+        $bakDir = Join-Path $root ("Backup\column_log_" + (Get-Date -Format "yyyyMMdd_HHmmss") + "\" + (Split-Path $analyticsPath -Leaf))
+        [System.IO.Directory]::CreateDirectory($bakDir) | Out-Null
+        Copy-Item -LiteralPath $logFile -Destination (Join-Path $bakDir "column_log.csv")
+        Write-Host "  Note: $($dropped.Count) old log row(s) had no project folder and were removed." -ForegroundColor DarkYellow
+        Write-Host "        Old log kept at: $bakDir" -ForegroundColor DarkGray
     }
-    $colOrder = @("ProjectID","ProjectNo","Date","Project","PI","AnalyticsColumn","ColumnDescription","TrapColumn","TrapColumnDescription","SampleFolders")
-    if ($matchIdx -ge 0) {
-        $existingRows[$matchIdx] = $logRow
-        $existingRows | Select-Object $colOrder | Export-Csv $logFile -NoTypeInformation -Encoding UTF8
-    } else {
-        $logRow | Export-Csv $logFile -Append -NoTypeInformation -Encoding UTF8
-    }
-} else {
-    $logRow | Export-Csv $logFile -NoTypeInformation -Encoding UTF8
 }
+$logRows | Export-Csv $logFile -NoTypeInformation -Encoding UTF8
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 Write-Host ""

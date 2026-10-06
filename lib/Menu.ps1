@@ -101,10 +101,28 @@ function Show-Menu {
     }
 }
 
+# -- Navigation ---------------------------------------------------------------
+# Main.ps1 runs scripts in a loop and sets $global:MsInMain. A script just
+# `return`s to get back to the menu; Main redraws itself. When a script is run
+# on its own (not from Main), Return-ToMain launches Main instead.
+
+# Go back to the main menu. Caller should `return` right after.
+function Return-ToMain {
+    Clear-Host
+    if (-not $global:MsInMain) { & (Join-Path (Split-Path $PSScriptRoot -Parent) "Main.ps1") }
+}
+
+# Leave the whole suite (Main stops after the current script returns).
+# Caller should `return` right after.
+function Request-Exit {
+    $global:MsExit = $true
+    Write-Host "  Exiting..." -ForegroundColor DarkYellow
+}
+
 # "Back to main menu / Exit" footer. Caller should `return` right after.
 function Show-NavExit {
     Write-Host ""
     $r = Show-Menu -Items @("Back to main menu", "Exit") -AllowEscape
-    if ($r.Action -eq "select" -and $r.Index -eq 0) { Clear-Host; .\Main.ps1 }
-    else { Write-Host "  Exiting..." -ForegroundColor DarkYellow }
+    if ($r.Action -eq "select" -and $r.Index -eq 0) { Return-ToMain }
+    else { Request-Exit }
 }

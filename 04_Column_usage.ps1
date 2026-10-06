@@ -1,6 +1,7 @@
 $w      = 55
 $border = "=" * $w
 $rule   = "-" * $w
+. (Join-Path $PSScriptRoot "lib\Menu.ps1")
 
 Write-Host ""
 Write-Host "  $border" -ForegroundColor DarkCyan
@@ -10,35 +11,14 @@ Write-Host "  $border" -ForegroundColor DarkCyan
 Write-Host ""
 
 # -- Confirm ------------------------------------------------------------------
-$cItems = @("Run", "Back to main menu")
-$cSel   = 0
-$cTop   = [Console]::CursorTop
-[Console]::SetCursorPosition(0, $cTop)
-Write-Host ("  > " + $cItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-[Console]::SetCursorPosition(0, $cTop + 1)
-Write-Host ("    " + $cItems[1]).PadRight($w + 4) -ForegroundColor DarkCyan -NoNewline
-[Console]::SetCursorPosition(0, $cTop + 2)
-:confirmLoop while ($true) {
-    $ck = [Console]::ReadKey($true)
-    if ($ck.Key -eq [ConsoleKey]::UpArrow -or $ck.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $cSel; $cSel = 1 - $cSel
-        [Console]::SetCursorPosition(0, $cTop + $p)
-        Write-Host ("    " + $cItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkCyan" }) -NoNewline
-        [Console]::SetCursorPosition(0, $cTop + $cSel)
-        Write-Host ("  > " + $cItems[$cSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } elseif ($ck.Key -eq [ConsoleKey]::Enter) {
-        if ($cSel -eq 1) { Clear-Host; .\Main.ps1; return }
-        break confirmLoop
-    } elseif ($ck.Key -eq [ConsoleKey]::Escape) {
-        Clear-Host; .\Main.ps1; return
-    }
-}
+$r = Show-Menu -Items @("Run", "Back to main menu") -AllowEscape
+if ($r.Action -ne "select" -or $r.Index -eq 1) { Return-ToMain; return }
 Write-Host ""
 
 $first_path = Get-location
 . (Join-Path $PSScriptRoot "lib\Pickers.ps1")
 $path = Read-FolderPath "Select the folder to scan for .raw files"
-if ($path -eq "") { Clear-Host; .\Main.ps1; return }
+if ($path -eq "") { Return-ToMain; return }
 Set-location -Path $path
 
 $currentDate        = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -57,23 +37,7 @@ if ($files.Count -eq 0) {
     Set-location $first_path
     Write-Host ""
     Write-Host "  $rule" -ForegroundColor DarkCyan
-    $nItems = @("Back to main menu", "Exit"); $nSel = 0
-    $nTop = [Console]::CursorTop
-    [Console]::SetCursorPosition(0, $nTop);     Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 1); Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-    [Console]::SetCursorPosition(0, $nTop + 2)
-    while ($true) {
-        $k = [Console]::ReadKey($true)
-        if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-            $p = $nSel; $nSel = 1 - $nSel
-            [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-            [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-        } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-            if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-            else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-            return
-        }
-    }
+    Show-NavExit
     return
 }
 
@@ -233,25 +197,7 @@ Write-Host "  $border" -ForegroundColor DarkCyan
 Set-location $first_path
 
 # ── Navigation ────────────────────────────────────────────────────────────────
-$nItems = @("Back to main menu", "Exit")
-$nSel   = 0
 Write-Host ""
 Write-Host "  $rule" -ForegroundColor DarkCyan
-$nTop = [Console]::CursorTop
-[Console]::SetCursorPosition(0, $nTop)
-Write-Host ("  > " + $nItems[0]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-[Console]::SetCursorPosition(0, $nTop + 1)
-Write-Host ("    " + $nItems[1]).PadRight($w + 4) -ForegroundColor DarkYellow -NoNewline
-[Console]::SetCursorPosition(0, $nTop + 2)
-while ($true) {
-    $k = [Console]::ReadKey($true)
-    if ($k.Key -eq [ConsoleKey]::UpArrow -or $k.Key -eq [ConsoleKey]::DownArrow) {
-        $p = $nSel; $nSel = 1 - $nSel
-        [Console]::SetCursorPosition(0, $nTop + $p);    Write-Host ("    " + $nItems[$p]).PadRight($w + 4) -ForegroundColor $(if ($p -eq 0) { "Cyan" } else { "DarkYellow" }) -NoNewline
-        [Console]::SetCursorPosition(0, $nTop + $nSel); Write-Host ("  > " + $nItems[$nSel]).PadRight($w + 4) -ForegroundColor Black -BackgroundColor Cyan -NoNewline
-    } elseif ($k.Key -eq [ConsoleKey]::Enter -or $k.Key -eq [ConsoleKey]::Escape) {
-        if ($k.Key -ne [ConsoleKey]::Escape -and $nSel -eq 0) { Clear-Host; .\Main.ps1 }
-        else { [Console]::SetCursorPosition(0, $nTop + 3); Write-Host "  Exiting..." -ForegroundColor DarkYellow }
-        return
-    }
-}
+Show-NavExit
+return
